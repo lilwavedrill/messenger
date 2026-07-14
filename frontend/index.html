@@ -29,9 +29,12 @@
     .composer button { padding: 8px 16px; border: 0; background: #2775ff; color: #fff; border-radius: 8px; cursor: pointer; }
     .composer label.attach { cursor: pointer; padding: 6px 10px; background: #e5e7eb; border-radius: 8px; font-size: 18px; }
     .composer input[type=file] { display: none; }
-    .pending-atts { padding: 4px 12px; font-size: 12px; color: #6b7280; background: #f9fafb; border-top: 1px solid #e5e7eb; }
-    .pending-atts .chip { display: inline-block; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 10px; margin-right: 6px; }
-    .pending-atts .chip .x { cursor: pointer; margin-left: 4px; }
+    .pending-atts { padding: 6px 12px; font-size: 12px; color: #6b7280; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .pending-atts .chip { display: inline-flex; align-items: center; gap: 6px; background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 10px; }
+    .pending-atts .chip img { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; }
+    .pending-atts .chip .x { cursor: pointer; opacity: .6; }
+    .pending-atts .chip .x:hover { opacity: 1; }
+    .composer-err { padding: 4px 12px; font-size: 12px; color: #b91c1c; background: #fef2f2; }
     .msg .attach { margin-top: 6px; }
     .msg .attach img { max-width: 240px; max-height: 240px; border-radius: 8px; display: block; cursor: zoom-in; }
     .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
@@ -94,8 +97,9 @@ function renderAuth() {
   let mode = "login";
   const box = h("div", { class: "box" });
   const title = h("h3", {}, "Вход");
-  const uname = h("input", { placeholder: "имя пользователя" });
+  const uname = h("input", { placeholder: "имя пользователя (логин)" });
   const pwd = h("input", { type: "password", placeholder: "пароль" });
+  const display = h("input", { placeholder: "отображаемое имя (только при регистрации)", style: "display:none" });
   const err = h("div", { style: "color:#b91c1c;min-height:16px;font-size:12px" });
   const submitBtn = h("button", {
     class: "primary",
@@ -103,7 +107,10 @@ function renderAuth() {
       err.textContent = "";
       try {
         const path = mode === "login" ? "/auth/login" : "/auth/register";
-        const r = await api(path, { method: "POST", body: JSON.stringify({ username: uname.value, password: pwd.value }) });
+        const body = mode === "login"
+          ? { username: uname.value, password: pwd.value }
+          : { username: uname.value, password: pwd.value, display_name: display.value || null };
+        const r = await api(path, { method: "POST", body: JSON.stringify(body) });
         token = r.token;
         me = { id: r.id, username: r.username };
         localStorage.setItem("token", token);
@@ -120,9 +127,10 @@ function renderAuth() {
       title.textContent = mode === "login" ? "Вход" : "Регистрация";
       submitBtn.textContent = mode === "login" ? "Войти" : "Создать аккаунт";
       swap.textContent = mode === "login" ? "Нет аккаунта? Регистрация" : "Уже есть аккаунт? Войти";
+      display.style.display = mode === "register" ? "block" : "none";
     }
   }, "Нет аккаунта? Регистрация");
-  box.append(title, uname, pwd, err, submitBtn, swap);
+  box.append(title, uname, pwd, display, err, submitBtn, swap);
   root.append(h("div", { class: "modal" }, box));
 }
 
@@ -134,7 +142,7 @@ async function loadUser(id) {
 async function preloadChatMembers(chatId) {
   try {
     const members = await api(`/chats/${chatId}/members`);
-    for (const u of members) userCache[u.id] = u.username;
+    for (const u of members) userCache[u.id] = u.display_name || u.username;
     return members;
   } catch { return []; }
 }
@@ -159,10 +167,17 @@ async function refreshChats(sidebar, content) {
   chats = await api("/chats");
   sidebar.innerHTML = "";
   sidebar.append(h("h2", {}, "Чаты"));
-  sidebar.append(h("button", {
-    style: "margin: 0 12px 8px; padding: 6px 10px; border:0; border-radius:6px; background:#2775ff; color:#fff; cursor:pointer;",
-    onclick: () => openCreateChatDialog(sidebar, content),
-  }, "+ Новый чат"));
+  sidebar.append(h("div", { style: "display:flex; gap:6px; margin:0 12px 8px;" },
+    h("button", {
+      style: "flex:1; padding: 6px 10px; border:0; border-radius:6px; background:#2775ff; color:#fff; cursor:pointer;",
+      onclick: () => openCreateChatDialog(sidebar, content),
+    }, "+ Новый чат"),
+    h("button", {
+      style: "padding: 6px 10px; border:0; border-radius:6px; background:#e5e7eb; cursor:pointer;",
+      title: "обновить список",
+      onclick: () => refreshChats(sidebar, content),
+    }, "⟳"),
+  ));
   if (!chats.length) sidebar.append(h("div", { style: "padding:12px;color:#6b7280" }, "Пока нет чатов"));
   // подтягиваем участников каждого чата, чтобы у direct отобразить имя собеседника
   await Promise.all(chats.map(c => preloadChatMembers(c.id).then(mem => c._members = mem)));
@@ -235,23 +250,30 @@ async function selectChat(chat, sidebar, content) {
   toolbar.append(searchInput, searchBtn, resetBtn, memberBtn);
 
   const msgsBox = h("div", { class: "msgs" });
+  const errBox = h("div", { class: "composer-err", style: "display:none" });
+  const showErr = (msg) => { errBox.textContent = msg; errBox.style.display = msg ? "block" : "none";
+    if (msg) setTimeout(() => { errBox.style.display = "none"; }, 5000); };
+
   const pendingBox = h("div", { class: "pending-atts", style: "display:none" });
-  let pending = []; // [{id, filename, size_bytes, mime_type}]
+  let pending = []; // [{id, filename, size_bytes, mime_type, _thumb?}]
   const redrawPending = () => {
     pendingBox.innerHTML = "";
     if (!pending.length) { pendingBox.style.display = "none"; return; }
-    pendingBox.style.display = "block";
-    pendingBox.append(document.createTextNode("Прикреплено: "));
+    pendingBox.style.display = "flex";
     pending.forEach((a, i) => {
-      const chip = h("span", { class: "chip" }, `📎 ${a.filename} `,
-        h("span", { class: "x", onclick: () => { pending.splice(i, 1); redrawPending(); } }, "✕"));
-      pendingBox.append(chip);
+      const parts = [];
+      if (a._thumb) parts.push(h("img", { src: a._thumb, alt: "" }));
+      else parts.push(document.createTextNode("📎"));
+      parts.push(document.createTextNode(`${a.filename} · ${fmtSize(a.size_bytes)}`));
+      parts.push(h("span", { class: "x", title: "убрать", onclick: () => { pending.splice(i, 1); redrawPending(); } }, "✕"));
+      pendingBox.append(h("span", { class: "chip" }, ...parts));
     });
   };
 
   const fileInput = h("input", { type: "file", onchange: async (e) => {
     const f = e.target.files[0];
     if (!f) return;
+    showErr("");
     const fd = new FormData();
     fd.append("file", f);
     try {
@@ -259,10 +281,14 @@ async function selectChat(chat, sidebar, content) {
         method: "POST", body: fd,
         headers: { "Authorization": "Bearer " + token },
       });
-      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-      pending.push(await r.json());
+      if (!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+      const att = await r.json();
+      if ((att.mime_type || "").startsWith("image/")) {
+        att._thumb = URL.createObjectURL(f);
+      }
+      pending.push(att);
       redrawPending();
-    } catch (err) { alert("upload failed: " + err.message); }
+    } catch (err) { showErr("не удалось загрузить: " + err.message); }
     fileInput.value = "";
   }});
   const attachLabel = h("label", { class: "attach", title: "Прикрепить файл" }, "📎", fileInput);
@@ -283,7 +309,7 @@ async function selectChat(chat, sidebar, content) {
   }}, "Отправить");
   const composer = h("div", { class: "composer" }, attachLabel, input, sendBtn);
 
-  content.append(toolbar, msgsBox, pendingBox, composer);
+  content.append(toolbar, msgsBox, pendingBox, errBox, composer);
   await loadHistory(msgsBox);
   openWs(chat.id, msgsBox);
 }
