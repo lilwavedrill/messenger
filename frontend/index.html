@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Messenger — учебный проект</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 14px/1.4 -apple-system, system-ui, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
+    header { background: #2775ff; color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header .me { margin-left: auto; opacity: .9; }
+    header button { background: rgba(255,255,255,.18); color: #fff; border: 0; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+    main { display: grid; grid-template-columns: 280px 1fr; height: calc(100vh - 44px); }
+    .sidebar { background: #fff; border-right: 1px solid #e5e7eb; overflow: auto; }
+    .sidebar h2 { margin: 12px 12px 6px; font-size: 12px; text-transform: uppercase; color: #6b7280; }
+    .chat-item { padding: 10px 14px; border-bottom: 1px solid #f0f0f2; cursor: pointer; }
+    .chat-item:hover { background: #f5f7fb; }
+    .chat-item.active { background: #eaf2ff; }
+    .chat-item small { color: #6b7280; }
+    .content { display: flex; flex-direction: column; height: 100%; }
+    .msgs { flex: 1; overflow: auto; padding: 14px 18px; }
+    .msg { margin-bottom: 10px; max-width: 70%; padding: 8px 12px; border-radius: 10px; background: #fff; border: 1px solid #e5e7eb; }
+    .msg.own { margin-left: auto; background: #dbeafe; border-color: #bfdbfe; }
+    .msg .who { font-size: 11px; color: #6b7280; margin-bottom: 2px; }
+    .msg .ticks { font-size: 12px; margin-left: 6px; color: #9ca3af; }
+    .msg .ticks.read { color: #2563eb; }
+    .composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #e5e7eb; background: #fff; align-items: center; }
+    .composer input[type=text] { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+    .composer button { padding: 8px 16px; border: 0; background: #2775ff; color: #fff; border-radius: 8px; cursor: pointer; }
+    .composer label.attach { cursor: pointer; padding: 6px 10px; background: #e5e7eb; border-radius: 8px; font-size: 18px; }
+    .composer input[type=file] { display: none; }
+    .pending-atts { padding: 4px 12px; font-size: 12px; color: #6b7280; background: #f9fafb; border-top: 1px solid #e5e7eb; }
+    .pending-atts .chip { display: inline-block; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 10px; margin-right: 6px; }
+    .pending-atts .chip .x { cursor: pointer; margin-left: 4px; }
+    .msg .attach { margin-top: 6px; }
+    .msg .attach img { max-width: 240px; max-height: 240px; border-radius: 8px; display: block; cursor: zoom-in; }
+    .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
+    .lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 6px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+    .lightbox .close { position: absolute; top: 16px; right: 20px; color: #fff; font-size: 32px; cursor: pointer; background: none; border: 0; }
+    .msg .attach a.file { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f3f4f6; border-radius: 8px; color: #111; text-decoration: none; font-size: 13px; }
+    #search { width: 100%; padding: 6px 10px; margin: 6px 12px 10px; width: calc(100% - 24px); border: 1px solid #d1d5db; border-radius: 6px; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
+    .modal .box { background: #fff; padding: 24px; border-radius: 12px; width: 320px; }
+    .modal h3 { margin: 0 0 10px; }
+    .modal input { display: block; width: 100%; margin-bottom: 8px; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+    .modal button { padding: 8px 12px; margin-right: 6px; border: 0; border-radius: 6px; cursor: pointer; }
+    .modal .primary { background: #2775ff; color: #fff; }
+    .modal .link { background: transparent; color: #2775ff; padding: 4px 6px; }
+    .empty { color: #9ca3af; text-align: center; margin-top: 40vh; }
+    .toolbar { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; background: #fafafa; }
+    .toolbar input { flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+    .toolbar button { padding: 4px 10px; border: 0; background: #e5e7eb; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .toolbar button.primary { background: #2775ff; color: #fff; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+const API = location.origin;
+let token = localStorage.getItem("token");
+let me = JSON.parse(localStorage.getItem("me") || "null");
+let chats = [];
+let activeChat = null;
+let ws = null;
+let userCache = {}; // id -> username
+
+function api(path, opts = {}) {
+  opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+  if (token) opts.headers["Authorization"] = "Bearer " + token;
+  return fetch(API + path, opts).then(async r => {
+    if (!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail);
+    return r.status === 204 ? null : r.json();
+  });
+}
+
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else el.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(c));
+  }
+  return el;
+}
+
+function renderAuth() {
+  const root = document.getElementById("root");
+  root.innerHTML = "";
+  let mode = "login";
+  const box = h("div", { class: "box" });
+  const title = h("h3", {}, "Вход");
+  const uname = h("input", { placeholder: "имя пользователя" });
+  const pwd = h("input", { type: "password", placeholder: "пароль" });
+  const err = h("div", { style: "color:#b91c1c;min-height:16px;font-size:12px" });
+  const submitBtn = h("button", {
+    class: "primary",
+    onclick: async () => {
+      err.textContent = "";
+      try {
+        const path = mode === "login" ? "/auth/login" : "/auth/register";
+        const r = await api(path, { method: "POST", body: JSON.stringify({ username: uname.value, password: pwd.value }) });
+        token = r.token;
+        me = { id: r.id, username: r.username };
+        localStorage.setItem("token", token);
+        localStorage.setItem("me", JSON.stringify(me));
+        userCache[me.id] = me.username;
+        await bootApp();
+      } catch (e) { err.textContent = e.message; }
+    }
+  }, "Войти");
+  const swap = h("button", {
+    class: "link",
+    onclick: () => {
+      mode = mode === "login" ? "register" : "login";
+      title.textContent = mode === "login" ? "Вход" : "Регистрация";
+      submitBtn.textContent = mode === "login" ? "Войти" : "Создать аккаунт";
+      swap.textContent = mode === "login" ? "Нет аккаунта? Регистрация" : "Уже есть аккаунт? Войти";
+    }
+  }, "Нет аккаунта? Регистрация");
+  box.append(title, uname, pwd, err, submitBtn, swap);
+  root.append(h("div", { class: "modal" }, box));
+}
+
+async function loadUser(id) {
+  if (userCache[id]) return userCache[id];
+  return "user#" + id; // fallback, пока members не подгружены
+}
+
+async function preloadChatMembers(chatId) {
+  try {
+    const members = await api(`/chats/${chatId}/members`);
+    for (const u of members) userCache[u.id] = u.username;
+    return members;
+  } catch { return []; }
+}
+
+async function bootApp() {
+  const root = document.getElementById("root");
+  root.innerHTML = "";
+  const hdr = h("header", {},
+    h("h1", {}, "💬 Messenger"),
+    h("span", { class: "me" }, "@" + me.username),
+    h("button", { onclick: () => { localStorage.clear(); token = null; me = null; renderAuth(); } }, "Выйти"),
+  );
+  const sidebar = h("aside", { class: "sidebar" });
+  const content = h("section", { class: "content" }, h("div", { class: "empty" }, "Выберите чат слева"));
+  const main = h("main", {}, sidebar, content);
+  root.append(hdr, main);
+
+  await refreshChats(sidebar, content);
+}
+
+async function refreshChats(sidebar, content) {
+  chats = await api("/chats");
+  sidebar.innerHTML = "";
+  sidebar.append(h("h2", {}, "Чаты"));
+  sidebar.append(h("button", {
+    style: "margin: 0 12px 8px; padding: 6px 10px; border:0; border-radius:6px; background:#2775ff; color:#fff; cursor:pointer;",
+    onclick: () => openCreateChatDialog(sidebar, content),
+  }, "+ Новый чат"));
+  if (!chats.length) sidebar.append(h("div", { style: "padding:12px;color:#6b7280" }, "Пока нет чатов"));
+  // подтягиваем участников каждого чата, чтобы у direct отобразить имя собеседника
+  await Promise.all(chats.map(c => preloadChatMembers(c.id).then(mem => c._members = mem)));
+  for (const c of chats) {
+    let title = c.title;
+    if (!title) {
+      if (c.type === "direct" && c._members) {
+        const other = c._members.find(u => u.id !== me.id);
+        title = other ? "@" + other.username : "личный чат";
+      } else {
+        title = "групповой";
+      }
+    }
+    const item = h("div", {
+      class: "chat-item" + (activeChat && activeChat.id === c.id ? " active" : ""),
+      onclick: () => selectChat(c, sidebar, content),
+    },
+      h("div", {}, title),
+      h("small", {}, c.type),
+    );
+    sidebar.append(item);
+  }
+}
+
+async function openCreateChatDialog(sidebar, content) {
+  const box = h("div", { class: "box" });
+  const err = h("div", { style: "color:#b91c1c;min-height:16px;font-size:12px" });
+  const title = h("input", { placeholder: "название (для группового)" });
+  const memberIds = h("input", { placeholder: "ID участника (через запятую)" });
+  const typeSel = h("select", { style: "width:100%;padding:8px;margin-bottom:8px;border:1px solid #d1d5db;border-radius:6px;" });
+  typeSel.append(h("option", { value: "group" }, "групповой"));
+  typeSel.append(h("option", { value: "direct" }, "личный (1-на-1)"));
+  const modal = h("div", { class: "modal" }, box);
+  box.append(
+    h("h3", {}, "Создать чат"),
+    typeSel, title, memberIds, err,
+    h("button", { class: "primary", onclick: async () => {
+      try {
+        const ids = memberIds.value.split(",").map(s => parseInt(s.trim())).filter(Boolean);
+        await api("/chats", {
+          method: "POST",
+          body: JSON.stringify({ type: typeSel.value, title: title.value || null, member_ids: ids }),
+        });
+        modal.remove();
+        await refreshChats(sidebar, content);
+      } catch (e) { err.textContent = e.message; }
+    }}, "Создать"),
+    h("button", { class: "link", onclick: () => modal.remove() }, "Отмена"),
+  );
+  document.body.append(modal);
+}
+
+async function selectChat(chat, sidebar, content) {
+  activeChat = chat;
+  // сразу подтягиваем участников — чтобы показать реальные ники
+  await preloadChatMembers(chat.id);
+
+  // подсветка
+  sidebar.querySelectorAll(".chat-item").forEach(el => el.classList.remove("active"));
+  const idx = chats.findIndex(c => c.id === chat.id);
+  const items = sidebar.querySelectorAll(".chat-item");
+  if (items[idx]) items[idx].classList.add("active");
+
+  content.innerHTML = "";
+  const toolbar = h("div", { class: "toolbar" });
+  const searchInput = h("input", { placeholder: "🔎 поиск по сообщениям…" });
+  const searchBtn = h("button", { class: "primary", onclick: async () => await runSearch(searchInput.value, msgsBox) }, "Найти");
+  const resetBtn = h("button", { onclick: async () => { searchInput.value = ""; await loadHistory(msgsBox); } }, "Сброс");
+  const memberBtn = h("button", { onclick: () => showMembersDialog(chat) }, "👥 участники");
+  toolbar.append(searchInput, searchBtn, resetBtn, memberBtn);
+
+  const msgsBox = h("div", { class: "msgs" });
+  const pendingBox = h("div", { class: "pending-atts", style: "display:none" });
+  let pending = []; // [{id, filename, size_bytes, mime_type}]
+  const redrawPending = () => {
+    pendingBox.innerHTML = "";
+    if (!pending.length) { pendingBox.style.display = "none"; return; }
+    pendingBox.style.display = "block";
+    pendingBox.append(document.createTextNode("Прикреплено: "));
+    pending.forEach((a, i) => {
+      const chip = h("span", { class: "chip" }, `📎 ${a.filename} `,
+        h("span", { class: "x", onclick: () => { pending.splice(i, 1); redrawPending(); } }, "✕"));
+      pendingBox.append(chip);
+    });
+  };
+
+  const fileInput = h("input", { type: "file", onchange: async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append("file", f);
+    try {
+      const r = await fetch(`${API}/chats/${chat.id}/attachments`, {
+        method: "POST", body: fd,
+        headers: { "Authorization": "Bearer " + token },
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      pending.push(await r.json());
+      redrawPending();
+    } catch (err) { alert("upload failed: " + err.message); }
+    fileInput.value = "";
+  }});
+  const attachLabel = h("label", { class: "attach", title: "Прикрепить файл" }, "📎", fileInput);
+
+  const input = h("input", { type: "text", placeholder: "Сообщение", onkeydown: (e) => { if (e.key === "Enter") sendBtn.click(); } });
+  const sendBtn = h("button", { onclick: async () => {
+    const text = input.value.trim();
+    if (!text && !pending.length) return;
+    const attachment_ids = pending.map(a => a.id);
+    input.value = "";
+    pending = []; redrawPending();
+    try {
+      await api(`/chats/${chat.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: text || "📎", client_msg_id: crypto.randomUUID(), attachment_ids }),
+      });
+    } catch (e) { alert(e.message); }
+  }}, "Отправить");
+  const composer = h("div", { class: "composer" }, attachLabel, input, sendBtn);
+
+  content.append(toolbar, msgsBox, pendingBox, composer);
+  await loadHistory(msgsBox);
+  openWs(chat.id, msgsBox);
+}
+
+async function loadHistory(msgsBox) {
+  msgsBox.innerHTML = "";
+  messageCache = {};
+  const rows = await api(`/chats/${activeChat.id}/messages?limit=50`);
+  for (const m of rows) {
+    messageCache[m.id] = { statuses: m.statuses || [] };
+    msgsBox.append(await renderMsg(m));
+  }
+  msgsBox.scrollTop = msgsBox.scrollHeight;
+  // При открытии чата — сразу отмечаем чужие сообщения как прочитанные
+  const foreign = rows.filter(m => m.sender_id !== me.id).map(m => m.id);
+  if (foreign.length && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: "ack", message_ids: foreign }));
+    ws.send(JSON.stringify({ type: "read", message_ids: foreign }));
+  }
+}
+
+async function runSearch(q, msgsBox) {
+  if (!q.trim()) return;
+  const rows = await api(`/chats/${activeChat.id}/search?q=${encodeURIComponent(q)}`);
+  msgsBox.innerHTML = "";
+  if (!rows.length) msgsBox.append(h("div", { class: "empty" }, "Ничего не найдено"));
+  for (const m of rows.reverse()) msgsBox.append(await renderMsg(m));
+}
+
+// Для «своих» сообщений считаем минимальный статус по чужим получателям —
+// это то, что показывать галочкой (одна ✓ — sent, две ✓✓ — delivered, две синих — read).
+function aggregateStatus(m) {
+  const others = (m.statuses || []).filter(s => s.user_id !== me.id);
+  if (!others.length) return "sent";
+  const order = { sent: 0, delivered: 1, read: 2 };
+  return others.reduce((min, s) => order[s.status] < order[min] ? s.status : min, "read");
+}
+
+function ticksFor(m) {
+  const st = aggregateStatus(m);
+  if (st === "sent") return { text: "✓", cls: "" };
+  if (st === "delivered") return { text: "✓✓", cls: "" };
+  return { text: "✓✓", cls: "read" };
+}
+
+function openLightbox(src, filename) {
+  if (!src) return;
+  const img = h("img", { src, alt: filename });
+  const close = h("button", { class: "close", title: "Закрыть", onclick: (e) => { e.stopPropagation(); box.remove(); } }, "×");
+  const box = h("div", { class: "lightbox", onclick: () => box.remove() }, img, close);
+  img.addEventListener("click", (e) => e.stopPropagation()); // клик по картинке не закрывает
+  const onEsc = (e) => { if (e.key === "Escape") { box.remove(); document.removeEventListener("keydown", onEsc); } };
+  document.addEventListener("keydown", onEsc);
+  document.body.append(box);
+}
+
+function fmtSize(b) {
+  if (b < 1024) return b + " Б";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " КБ";
+  return (b / 1024 / 1024).toFixed(1) + " МБ";
+}
+
+function renderAttachment(att) {
+  const url = `${API}/attachments/${att.id}`;
+  const isImg = (att.mime_type || "").startsWith("image/");
+  const box = h("div", { class: "attach" });
+  if (isImg) {
+    // Открытие эндпоинта в браузере даёт 302 → MinIO, но img src так работать не будет,
+    // потому что браузер не прикрепит Authorization. Проксируем через fetch и делаем blob URL.
+    const img = h("img", { alt: att.filename, title: "нажмите для увеличения",
+      onclick: () => openLightbox(img.src, att.filename) });
+    fetch(url, { headers: { "Authorization": "Bearer " + token }, redirect: "follow" })
+      .then(r => r.blob()).then(b => img.src = URL.createObjectURL(b))
+      .catch(() => { img.replaceWith(h("span", {}, "[картинка недоступна]")); });
+    box.append(img);
+  } else {
+    // Файл: кнопка «скачать» — тянет через fetch с токеном, сохраняет как blob.
+    const btn = h("a", { class: "file", href: "#", onclick: async (e) => {
+      e.preventDefault();
+      const r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = att.filename;
+      a.click();
+    }}, `📎 ${att.filename} (${fmtSize(att.size_bytes)})`);
+    box.append(btn);
+  }
+  return box;
+}
+
+async function renderMsg(m) {
+  const own = m.sender_id === me.id;
+  const who = own ? "я" : await loadUser(m.sender_id);
+  const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const el = h("div", { class: "msg" + (own ? " own" : ""), "data-msg-id": m.id },
+    h("div", { class: "who" }, `${who} · ${time}`),
+    h("div", {}, m.text),
+  );
+  for (const att of m.attachments || []) el.append(renderAttachment(att));
+  if (own) {
+    const t = ticksFor(m);
+    el.querySelector(".who").append(h("span", { class: "ticks " + t.cls }, t.text));
+  }
+  return el;
+}
+
+function updateTicks(messageId, userId, status) {
+  const el = document.querySelector(`.msg[data-msg-id="${messageId}"]`);
+  if (!el) return;
+  // Обновляем локально сохранённые статусы, потом перерисуем галочку
+  const rec = messageCache[messageId];
+  if (!rec) return;
+  const existing = rec.statuses.find(s => s.user_id === userId);
+  if (existing) existing.status = status;
+  else rec.statuses.push({ user_id: userId, status });
+  const ticks = el.querySelector(".ticks");
+  if (ticks) {
+    const t = ticksFor(rec);
+    ticks.textContent = t.text;
+    ticks.className = "ticks " + t.cls;
+  }
+}
+
+let messageCache = {}; // id -> {statuses:[]}
+
+function openWs(chatId, msgsBox) {
+  if (ws) try { ws.close(); } catch {}
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws/${chatId}?token=${encodeURIComponent(token)}`);
+  ws.onmessage = async (e) => {
+    const ev = JSON.parse(e.data);
+    if (!activeChat || ev.chat_id !== activeChat.id) return;
+    if (ev.type === "message") {
+      messageCache[ev.id] = { statuses: ev.statuses || [] };
+      msgsBox.append(await renderMsg(ev));
+      msgsBox.scrollTop = msgsBox.scrollHeight;
+      // Сразу подтверждаем доставку чужого сообщения + прочитано (окно открыто)
+      if (ev.sender_id !== me.id && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "ack", message_ids: [ev.id] }));
+        ws.send(JSON.stringify({ type: "read", message_ids: [ev.id] }));
+      }
+    } else if (ev.type === "status") {
+      for (const mid of ev.message_ids || []) {
+        updateTicks(mid, ev.user_id, ev.status);
+      }
+    }
+  };
+  ws.onclose = () => setTimeout(() => activeChat && openWs(activeChat.id, msgsBox), 2000);
+}
+
+async function showMembersDialog(chat) {
+  const members = await api(`/chats/${chat.id}/members`);
+  const box = h("div", { class: "box" });
+  const modal = h("div", { class: "modal" }, box);
+  const list = h("div", {});
+  for (const u of members) {
+    userCache[u.id] = u.username;
+    list.append(h("div", { style: "padding:4px 0" }, `#${u.id} @${u.username}`));
+  }
+  const uid = h("input", { placeholder: "ID нового участника", type: "number" });
+  const err = h("div", { style: "color:#b91c1c;min-height:16px;font-size:12px" });
+  box.append(
+    h("h3", {}, `Участники — ${chat.title || "чат #" + chat.id}`),
+    list,
+    uid, err,
+    h("button", { class: "primary", onclick: async () => {
+      try {
+        await api(`/chats/${chat.id}/members`, { method: "POST", body: JSON.stringify({ user_id: parseInt(uid.value) }) });
+        modal.remove();
+        showMembersDialog(chat);
+      } catch (e) { err.textContent = e.message; }
+    }}, "Добавить"),
+    h("button", { class: "link", onclick: () => modal.remove() }, "Закрыть"),
+  );
+  document.body.append(modal);
+}
+
+if (token && me) { userCache[me.id] = me.username; bootApp(); } else { renderAuth(); }
+</script>
+</body>
+</html>

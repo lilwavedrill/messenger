@@ -1,0 +1,80 @@
+digraph ER {
+  rankdir=LR;
+  graph [splines=ortho, nodesep=0.6, ranksep=1.0, bgcolor="white", fontname="Helvetica"];
+  node  [shape=plaintext, fontname="Helvetica", fontsize=11];
+  edge  [fontname="Helvetica", fontsize=10, color="#4b5563"];
+
+  users [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" BGCOLOR="white">
+      <TR><TD BGCOLOR="#2775ff"><FONT COLOR="white"><B>users</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B>id</B> BIGSERIAL PK</TD></TR>
+      <TR><TD ALIGN="LEFT">username VARCHAR(64) UNIQUE</TD></TR>
+      <TR><TD ALIGN="LEFT">password_hash VARCHAR(255)</TD></TR>
+      <TR><TD ALIGN="LEFT">display_name VARCHAR(128)</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at TIMESTAMPTZ</TD></TR>
+    </TABLE>
+  >];
+
+  chats [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" BGCOLOR="white">
+      <TR><TD BGCOLOR="#2775ff"><FONT COLOR="white"><B>chats</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B>id</B> BIGSERIAL PK</TD></TR>
+      <TR><TD ALIGN="LEFT">type VARCHAR(16) (direct|group)</TD></TR>
+      <TR><TD ALIGN="LEFT">title VARCHAR(128)</TD></TR>
+      <TR><TD ALIGN="LEFT"><I>created_by</I> BIGINT FK → users.id</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at TIMESTAMPTZ</TD></TR>
+    </TABLE>
+  >];
+
+  chat_members [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" BGCOLOR="white">
+      <TR><TD BGCOLOR="#10b981"><FONT COLOR="white"><B>chat_members</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B><I>chat_id</I></B> BIGINT PK/FK → chats.id</TD></TR>
+      <TR><TD ALIGN="LEFT"><B><I>user_id</I></B> BIGINT PK/FK → users.id</TD></TR>
+      <TR><TD ALIGN="LEFT">role VARCHAR(16) (reader|writer|owner)</TD></TR>
+      <TR><TD ALIGN="LEFT">joined_at TIMESTAMPTZ</TD></TR>
+    </TABLE>
+  >];
+
+  messages [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" BGCOLOR="white">
+      <TR><TD BGCOLOR="#2775ff"><FONT COLOR="white"><B>messages</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B>id</B> BIGSERIAL PK</TD></TR>
+      <TR><TD ALIGN="LEFT"><I>chat_id</I> BIGINT FK → chats.id</TD></TR>
+      <TR><TD ALIGN="LEFT"><I>sender_id</I> BIGINT FK → users.id</TD></TR>
+      <TR><TD ALIGN="LEFT">text TEXT (1..4000)</TD></TR>
+      <TR><TD ALIGN="LEFT">client_msg_id UUID</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at TIMESTAMPTZ</TD></TR>
+    </TABLE>
+  >];
+
+  message_status [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" BGCOLOR="white">
+      <TR><TD BGCOLOR="#10b981"><FONT COLOR="white"><B>message_status</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B><I>message_id</I></B> BIGINT PK/FK → messages.id</TD></TR>
+      <TR><TD ALIGN="LEFT"><B><I>user_id</I></B> BIGINT PK/FK → users.id</TD></TR>
+      <TR><TD ALIGN="LEFT">status VARCHAR (sent|delivered|read)</TD></TR>
+      <TR><TD ALIGN="LEFT">updated_at TIMESTAMPTZ</TD></TR>
+    </TABLE>
+  >];
+
+  audit_log [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" BGCOLOR="white">
+      <TR><TD BGCOLOR="#6b7280"><FONT COLOR="white"><B>audit_log</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B>id</B> BIGSERIAL PK</TD></TR>
+      <TR><TD ALIGN="LEFT"><I>user_id</I> BIGINT FK → users.id</TD></TR>
+      <TR><TD ALIGN="LEFT">action VARCHAR(64)</TD></TR>
+      <TR><TD ALIGN="LEFT">payload JSONB</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at TIMESTAMPTZ</TD></TR>
+    </TABLE>
+  >];
+
+  users -> chats           [label="1:N создаёт",    arrowhead=crow, arrowtail=none, dir=both];
+  users -> chat_members    [label="1:N",            arrowhead=crow, arrowtail=none, dir=both];
+  chats -> chat_members    [label="1:N",            arrowhead=crow, arrowtail=none, dir=both];
+  chats -> messages        [label="1:N",            arrowhead=crow, arrowtail=none, dir=both];
+  users -> messages        [label="1:N автор",      arrowhead=crow, arrowtail=none, dir=both];
+  messages -> message_status [label="1:N",          arrowhead=crow, arrowtail=none, dir=both];
+  users -> message_status  [label="1:N",            arrowhead=crow, arrowtail=none, dir=both];
+  users -> audit_log       [label="1:N",            arrowhead=crow, arrowtail=none, dir=both];
+}
