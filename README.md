@@ -1,69 +1,78 @@
 # Messenger — учебный проект (VK Education, кейс №1)
 
-Реалтайм-мессенджер: авторизация, личные и групповые чаты, WebSocket-доставка,
-история с пагинацией, поиск.
+Реалтайм-мессенджер с авторизацией, чатами, WebSocket-обменом, историей,
+поиском, вложениями через S3 и статусами доставки сообщений.
 
 ## Стек
 
-- Python 3.13 · FastAPI · SQLAlchemy 2 · psycopg 3
-- PostgreSQL 14 (уже установлен через Homebrew)
-- Realtime — WebSocket
-- Auth — JWT (HS256) + bcrypt
-- Frontend — один `index.html` без сборки, отдаётся как статика
+- **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2, psycopg 3
+- **БД:** PostgreSQL 14
+- **Realtime:** WebSocket (`fastapi.WebSocket`)
+- **Auth:** JWT (HS256) + bcrypt
+- **Файлы:** S3-совместимое хранилище (MinIO локально)
+- **Frontend:** одностраничный HTML/CSS/JS без сборщика
 
-## Что работает
+## Возможности
 
-- `POST /auth/register`, `POST /auth/login` → JWT
-- `GET/POST /chats`, `GET/POST/DELETE /chats/{id}/members`
-- `POST /chats/{id}/messages` (с идемпотентностью через `client_msg_id`)
-- `GET /chats/{id}/messages?before_id=&limit=` — история с пагинацией «вверх»
-- `GET /chats/{id}/search?q=` — поиск по подстроке
-- `WS /ws/{chat_id}?token=<JWT>` — push новых сообщений участникам
-- Аудит действий → таблица `audit_log`
-- Роли внутри чата: `reader` / `writer` / `owner`
+Обязательный минимум (MVP по ТЗ):
+
+- [x] Регистрация/логин по паре `логин + пароль`, JWT
+- [x] Личные (1-на-1) и групповые чаты с названием
+- [x] Отправка и получение сообщений в реальном времени
+- [x] История сообщений с пагинацией «вверх» (по `before_id`)
+- [x] Добавление/удаление участников (только `owner`)
+- [x] Поиск по сообщениям в рамках чата
+- [x] Роли внутри чата: `reader`, `writer`, `owner`
+
+Дополнительно:
+
+- [x] Статусы доставки: `sent` → `delivered` → `read` (одна ✓, две ✓✓, две синих)
+- [x] Идемпотентность отправки через `client_msg_id` + `UNIQUE (chat_id, client_msg_id)`
+- [x] Вложения через S3-совместимое хранилище (MinIO), картинки открываются в лайтбоксе
+- [x] Аудит действий пользователей → таблица `audit_log`
 
 ## Быстрый старт
 
+Требования: macOS/Linux, Python 3.11+, PostgreSQL 14+, [MinIO](https://min.io/).
+
 ```bash
-# 1) БД (Postgres 14 через Homebrew уже запущен)
+# 1) БД
 brew services start postgresql@14
 psql -U mac -d postgres -c "CREATE DATABASE messenger;"
 psql -U mac -d messenger -f backend/schema.sql
 
-# 2) Backend
+# 2) MinIO (S3-совместимое хранилище)
+brew install minio/stable/minio
+mkdir -p .minio-data
+minio server .minio-data --address :9000 --console-address :9001 &
+
+# 3) Backend
 cd backend
+cp .env.example .env       # при необходимости поправить креды
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --reload --port 8000
+
+# 4) Наполнить БД тестовыми данными (опционально)
+.venv/bin/python -m scripts.seed
+
+# 5) Запустить сервер
+.venv/bin/uvicorn app.main:app --port 8000
 ```
 
-- Swagger UI: http://127.0.0.1:8000/docs
-- Веб-клиент: http://127.0.0.1:8000/app/
-- Health-check: http://127.0.0.1:8000/healthz
+После запуска:
 
-## Конфигурация
+- Веб-клиент: <http://127.0.0.1:8000/app/>
+- Swagger UI: <http://127.0.0.1:8000/docs>
+- Health-check: <http://127.0.0.1:8000/healthz>
+- MinIO Console: <http://127.0.0.1:9001> (login `minioadmin` / `minioadmin`)
 
-Правится в `backend/.env`:
+Тестовые пользователи (после `scripts/seed.py`):
 
-```
-DATABASE_URL=postgresql+psycopg://mac@localhost:5432/messenger
-JWT_SECRET=change-me-in-prod
-JWT_TTL_MINUTES=1440
-```
-
-## Проверенные сценарии
-
-| # | Сценарий | Результат |
+| Логин | Пароль | Роль в чате «General» |
 |---|---|---|
-| 1 | Регистрация alice, bob | 201, получены JWT |
-| 2 | Alice создаёт групповой чат с bob | 201, чат с двумя участниками |
-| 3 | Alice отправляет 3 сообщения | 201, все в БД |
-| 4 | Bob читает историю | 200, все сообщения в порядке |
-| 5 | Поиск по подстроке `дела` | 200, найдено 1 совпадение |
-| 6 | Пустой текст | 422 |
-| 7 | Без токена | 401 |
-| 8 | Отправка в чат #999999 | 404 |
-| 9 | WebSocket: alice шлёт REST → bob получает push | доставлено < 100 мс |
+| `alice` | `secret123` | owner |
+| `bob` | `secret123` | writer |
+| `charlie` | `secret123` | writer |
 
 ## Структура
 
@@ -71,28 +80,60 @@ JWT_TTL_MINUTES=1440
 messenger/
 ├─ backend/
 │  ├─ app/
-│  │  ├─ main.py           # FastAPI app + монтирование фронта
-│  │  ├─ config.py         # чтение .env
-│  │  ├─ db.py             # engine + SessionLocal
-│  │  ├─ models.py         # SQLAlchemy-модели
-│  │  ├─ schemas.py        # Pydantic-схемы
-│  │  ├─ auth.py           # JWT + bcrypt + current_user_id
-│  │  ├─ hub.py            # WebSocket-хаб (broadcast)
+│  │  ├─ main.py              # FastAPI приложение
+│  │  ├─ config.py            # чтение .env
+│  │  ├─ db.py                # engine + SessionLocal
+│  │  ├─ models.py            # SQLAlchemy-модели
+│  │  ├─ schemas.py           # Pydantic-схемы
+│  │  ├─ auth.py              # JWT + bcrypt
+│  │  ├─ hub.py               # in-memory реестр WS-подписчиков
+│  │  ├─ s3.py                # клиент к MinIO/S3
 │  │  ├─ routes_auth.py
 │  │  ├─ routes_chats.py
 │  │  ├─ routes_messages.py
-│  │  └─ routes_ws.py
-│  ├─ schema.sql           # DDL PostgreSQL с индексами
+│  │  ├─ routes_ws.py
+│  │  └─ routes_attachments.py
+│  ├─ scripts/
+│  │  └─ seed.py              # наполнение тестовыми данными
+│  ├─ migrations/             # инкрементальные SQL-миграции
+│  ├─ schema.sql              # полная схема БД
 │  ├─ requirements.txt
-│  └─ .env
-└─ frontend/
-   └─ index.html           # одностраничный клиент (auth + чаты + WS)
+│  └─ .env.example
+├─ frontend/
+│  └─ index.html              # одностраничный клиент
+└─ docs/
+   ├─ er.png / er.svg / er.dot
+   ├─ report.docx             # отчёт по ГОСТ 7.32-2017
+   └─ report.md               # markdown-версия отчёта
 ```
+
+## API (кратко)
+
+| Метод | Путь | Описание |
+|---|---|---|
+| POST | `/auth/register` | Регистрация |
+| POST | `/auth/login` | Вход, возвращает JWT |
+| GET | `/chats` | Список моих чатов |
+| POST | `/chats` | Создать чат |
+| GET | `/chats/{id}/members` | Участники чата |
+| POST | `/chats/{id}/members` | Добавить (только `owner`) |
+| DELETE | `/chats/{id}/members/{uid}` | Удалить (только `owner`) |
+| GET | `/chats/{id}/messages?before_id=&limit=` | История |
+| POST | `/chats/{id}/messages` | Отправить сообщение (опц. `attachment_ids`) |
+| GET | `/chats/{id}/search?q=` | Поиск по чату |
+| POST | `/chats/{id}/attachments` | Загрузить файл (multipart) |
+| GET | `/attachments/{id}` | Скачать (redirect на presigned URL) |
+| WS | `/ws/{chat_id}?token=<JWT>` | Реалтайм-подписка |
 
 ## Известные ограничения
 
-- WebSocket-хаб держит подключения в памяти → одна нода API.
-  Для масштабирования нужен Redis pub/sub между инстансами.
-- Нет вложений (файлы, картинки) — в схеме есть `messages.client_msg_id`,
-  можно добавить таблицу `attachments`.
+- Одна нода API: `Hub` держит подключения в памяти. Для масштабирования нужен
+  брокер (Redis pub/sub, Kafka, NATS JetStream).
 - Нет push-уведомлений для оффлайн-пользователей.
+- Нет E2E-шифрования.
+- Presigned URL действителен 1 час — этого хватает для скачивания, но не для
+  долговременных ссылок.
+
+## Авторы
+
+- см. `docs/contributions.md`
