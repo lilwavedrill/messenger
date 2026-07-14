@@ -1,0 +1,14 @@
+backend/.venv/
+backend/.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.log
+/uploads/
+.idea/
+.vscode/
+.minio-data/
+node_modules/
+package.json
+package-lock.json
