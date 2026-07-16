@@ -166,6 +166,12 @@ messenger/
 - Нет E2E-шифрования переписки.
 - Presigned URL действителен 1 час.
 
+## Демонстрация
+
+- Отчёт по практике (ГОСТ 7.32-2017): [`docs/report.docx`](docs/report.docx)
+- Скриншоты интерфейса: [`docs/screenshots/`](docs/screenshots/)
+- Видеодемонстрация работы приложения (~11 МБ, ≈2 мин): [`docs/demo.mp4`](docs/demo.mp4)
+
 ## Авторы
 
 См. [docs/contributions.md](docs/contributions.md).
