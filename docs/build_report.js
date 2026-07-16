@@ -129,7 +129,7 @@ function titlePage() {
 function referat() {
   return [
     h1("РЕФЕРАТ"),
-    p("Отчёт содержит 34 стр., 9 таблиц, 2 рисунка, 8 источников, 1 приложение."),
+    p("Отчёт содержит 38 стр., 9 таблиц, 6 рисунков, 9 источников, 2 приложения."),
     empty(),
     p([
       tr("Ключевые слова: ", { bold: true }),
@@ -175,6 +175,7 @@ function toc() {
     item("Заключение", "32"),
     item("Список использованных источников", "33"),
     item("Приложение А. ER-диаграмма базы данных", "34"),
+    item("Приложение Б. Скриншоты пользовательского интерфейса", "35"),
   ];
 }
 
@@ -664,6 +665,7 @@ function references() {
     "6. Fielding R. T. Architectural Styles and the Design of Network-based Software Architectures : дис. ... д-ра филос. — Университет Калифорнии в Ирвайне, 2000. — 180 с.",
     "7. Amazon Simple Storage Service (S3) API Reference [Электронный ресурс]. — URL: https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html (дата обращения: 13.07.2026).",
     "8. pytest documentation [Электронный ресурс]. — URL: https://docs.pytest.org/en/stable/ (дата обращения: 13.07.2026).",
+    "9. Исходный код проекта. Репозиторий на GitHub [Электронный ресурс]. — URL: https://github.com/lilwavedrill/messenger (дата обращения: 16.07.2026).",
   ];
   return [
     h1("СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"),
@@ -671,7 +673,7 @@ function references() {
   ];
 }
 
-// --- приложение ---
+// --- приложение А (ER-диаграмма) ---
 function appendix() {
   const imagePath = "docs/er.png";
   const imgBuf = fs.existsSync(imagePath) ? fs.readFileSync(imagePath) : null;
@@ -696,6 +698,52 @@ function appendix() {
     }));
   }
   items.push(p("Рисунок А.1 — ER-диаграмма базы данных мессенджера", { align: AlignmentType.CENTER, indent: false, run: { italics: true } }));
+  return items;
+}
+
+// --- приложение Б (скриншоты интерфейса) ---
+function appendixB() {
+  // Порядок и подписи. Размеры подобраны так, чтобы каждая картинка вписывалась
+  // в ширину полосы набора (~165 мм при полях 30/15 мм).
+  const shots = [
+    { file: "docs/screenshots/01-login.png",    w: 380, h: 430, caption: "Форма входа" },
+    { file: "docs/screenshots/02-main.png",     w: 620, h: 298, caption: "Основной экран: сайдбар, список чатов, диалог" },
+    { file: "docs/screenshots/03-profile.png",  w: 380, h: 414, caption: "Модальное окно профиля пользователя" },
+    { file: "docs/screenshots/04-new-chat.png", w: 380, h: 377, caption: "Модальное окно создания группового чата" },
+  ];
+  const items = [
+    h1("ПРИЛОЖЕНИЕ Б"),
+    new Paragraph({
+      children: [tr("(справочное)", { italics: true })],
+      alignment: AlignmentType.CENTER,
+      spacing: SPACING,
+    }),
+    new Paragraph({
+      children: [tr("Скриншоты пользовательского интерфейса", { bold: true })],
+      alignment: AlignmentType.CENTER,
+      spacing: { ...SPACING, before: 240, after: 240 },
+    }),
+    p("Ниже приведены скриншоты реально работающего веб-клиента разработанного мессенджера. Все снимки сделаны с локально запущенной копии приложения (backend на http://127.0.0.1:8000, MinIO на http://127.0.0.1:9000, PostgreSQL 17)."),
+  ];
+  shots.forEach((s, i) => {
+    const buf = fs.existsSync(s.file) ? fs.readFileSync(s.file) : null;
+    if (buf) {
+      items.push(new Paragraph({
+        children: [new ImageRun({ data: buf, transformation: { width: s.w, height: s.h }, type: "png" })],
+        alignment: AlignmentType.CENTER,
+        spacing: { ...SPACING, before: 240 },
+      }));
+    }
+    items.push(p(`Рисунок Б.${i + 1} — ${s.caption}`, {
+      align: AlignmentType.CENTER, indent: false, run: { italics: true },
+    }));
+  });
+  items.push(empty());
+  items.push(p([
+    tr("Исходный код проекта, включая все программные модули, миграции базы данных, автоматические тесты и настоящий отчёт, доступен в публичном репозитории на GitHub по адресу: "),
+    tr("https://github.com/lilwavedrill/messenger", { bold: true }),
+    tr("."),
+  ]));
   return items;
 }
 
@@ -769,6 +817,7 @@ const doc = new Document({
         ...conclusion(),
         ...references(),
         ...appendix(),
+        ...appendixB(),
       ],
     },
   ],
