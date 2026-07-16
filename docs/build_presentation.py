@@ -201,9 +201,9 @@ def slide_relevance(prs, total):
 
     # три цифры-хайлайта
     stats = [
-        ("100+ млрд", "сообщений в день через мессенджеры"),
-        ("< 200 мс", "цель по задержке доставки"),
-        ("3 транспорта", "WebSocket, gRPC, long polling"),
+        ("100+ млрд", "сообщений в день по всему миру"),
+        ("< 200 мс", "цель по скорости доставки"),
+        ("24 / 7",   "круглосуточная доступность"),
     ]
     x = Inches(0.9)
     y = Inches(2.4)
@@ -297,38 +297,27 @@ def slide_requirements(prs, total):
 
 def slide_analogs(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "04  ·  ОБЗОР АНАЛОГОВ", "Что делают взрослые, а что мы")
+    add_slide_header(s, "04  ·  ПОХОЖИЕ СЕРВИСЫ", "На что мы ориентировались")
 
     items = [
-        ("WhatsApp",  "XMPP-подобный протокол, Signal E2E-шифрование"),
-        ("Telegram",  "собственный MTProto, распределённые дата-центры"),
-        ("Discord",   "интенсивно использует WebSocket, ориентация на голос"),
-        ("Slack",     "гибрид REST + WebSocket — та же схема, что у нас"),
-        ("VK",        "long polling в мобильных, WebSocket в web"),
-        ("Matrix",    "открытый федеративный протокол"),
+        ("Telegram",  "личные и групповые чаты, история, поиск"),
+        ("WhatsApp",  "мобильный обмен, статусы прочтения"),
+        ("Discord",   "групповые каналы, живая переписка"),
+        ("VK",        "web-версия и мобильное приложение"),
+        ("Slack",     "рабочие чаты, роли и права"),
     ]
-    y = Inches(2.35)
+    y = Inches(2.5)
     for i, (name, note) in enumerate(items):
-        row_y = y + Inches(0.55) * i
-        add_text(s, Inches(0.9), row_y, Inches(2.5), Inches(0.5),
-                 name, font=F_UI, size=16, bold=True, color=INK)
-        add_text(s, Inches(3.6), row_y, Inches(9.6), Inches(0.5),
-                 note, font=F_UI, size=14, color=MUTED)
+        row_y = y + Inches(0.7) * i
+        add_text(s, Inches(0.9), row_y, Inches(2.8), Inches(0.5),
+                 name, font=F_UI, size=18, bold=True, color=INK)
+        add_text(s, Inches(3.9), row_y + Inches(0.03), Inches(9.3), Inches(0.5),
+                 note, font=F_UI, size=15, color=MUTED)
 
-    # что взяли / чего избежали
-    add_rect(s, Inches(0.9), Inches(6.0), Inches(6.0), Inches(0.9), BLUE_BG)
-    add_text(s, Inches(1.1), Inches(6.08), Inches(6), Inches(0.3),
-             "ВЗЯЛИ ЗА ОСНОВУ", font=F_MONO, size=9, color=BLUE)
-    add_text(s, Inches(1.1), Inches(6.36), Inches(5.8), Inches(0.5),
-             "гибрид REST + WebSocket, роли в чате, идемпотентность",
-             font=F_UI, size=12, color=INK)
-
-    add_rect(s, Inches(7.2), Inches(6.0), Inches(6.0), Inches(0.9), FAINT)
-    add_text(s, Inches(7.4), Inches(6.08), Inches(6), Inches(0.3),
-             "СОЗНАТЕЛЬНО ОТКАЗАЛИСЬ", font=F_MONO, size=9, color=MUTED)
-    add_text(s, Inches(7.4), Inches(6.36), Inches(5.8), Inches(0.5),
-             "E2E-шифрование, федерация, брокер сообщений, шардирование",
-             font=F_UI, size=12, color=INK)
+    add_multiline(s, Inches(0.9), Inches(6.25), Inches(12.3), Inches(0.9), [
+        "Мы посмотрели, какие функции есть у популярных мессенджеров,",
+        "и собрали свой прототип с тем же набором базовых возможностей.",
+    ], size=14, color=INK, line_spacing=1.35, bullet_dash=False)
     add_footer(s, 6, total)
 
 
@@ -414,123 +403,92 @@ def slide_architecture(prs, total):
 
 def slide_database(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "07  ·  БАЗА ДАННЫХ", "8 таблиц, 3НФ, индексы под задачу")
+    add_slide_header(s, "07  ·  БАЗА ДАННЫХ", "Что и где мы храним")
 
-    # список таблиц слева
     entities = [
-        "users",
-        "chats",
-        "chat_members",
-        "messages",
-        "message_status",
-        "attachments",
-        "refresh_tokens",
-        "audit_log",
+        ("Пользователи",   "логин, пароль (в виде хэша), имя, аватар"),
+        ("Чаты",           "личные и групповые"),
+        ("Участники",      "кто в каком чате и с какой ролью"),
+        ("Сообщения",      "текст, автор, время, чат"),
+        ("Статусы",        "отправлено / доставлено / прочитано"),
+        ("Вложения",       "файлы и картинки, ссылка на S3"),
+        ("Токены",         "для входа и обновления сессии"),
+        ("Журнал",         "кто что делал в системе"),
     ]
-    add_text(s, Inches(0.9), Inches(2.35), Inches(4), Inches(0.35),
-             "ТАБЛИЦЫ", font=F_MONO, size=11, color=MUTED)
-    add_multiline(s, Inches(0.9), Inches(2.75), Inches(4), Inches(3.5),
-                  entities, size=15, color=INK, line_spacing=1.45,
-                  font=F_MONO)
+    y = Inches(2.4)
+    for i, (name, note) in enumerate(entities):
+        col = i % 2
+        row = i // 2
+        left = Inches(0.9) + col * Inches(6.2)
+        top = y + row * Inches(0.6)
+        add_text(s, left, top, Inches(2.4), Inches(0.5),
+                 name, font=F_UI, size=15, bold=True, color=INK)
+        add_text(s, left + Inches(2.5), top + Inches(0.03),
+                 Inches(3.6), Inches(0.5),
+                 note, font=F_UI, size=13, color=MUTED)
 
-    # ключевые индексы справа
-    add_text(s, Inches(5.5), Inches(2.35), Inches(7.8), Inches(0.35),
-             "КЛЮЧЕВЫЕ ИНДЕКСЫ", font=F_MONO, size=11, color=MUTED)
-    idx = [
-        "(chat_id, id DESC) на messages — пагинация «вверх» O(log n)",
-        "GIN to_tsvector('russian', text) на messages — FTS с русской морфологией",
-        "(user_id) на chat_members — быстрая выборка «мои чаты»",
-        "UNIQUE (chat_id, client_msg_id) — механизм идемпотентности",
-        "UNIQUE token_hash на refresh_tokens",
-    ]
-    add_multiline(s, Inches(5.5), Inches(2.75), Inches(7.8), Inches(4),
-                  idx, size=13, color=INK, line_spacing=1.45)
-
-    # ссылка на приложение
-    add_text(s, Inches(0.9), Inches(6.55), Inches(12.3), Inches(0.35),
-             "ER-диаграмма — в приложении А отчёта (docs/er.png).",
-             font=F_UI, size=12, italic=True, color=MUTED)
+    add_text(s, Inches(0.9), Inches(6.6), Inches(12), Inches(0.4),
+             "Всего 8 таблиц в PostgreSQL. Полная схема — в отчёте (приложение А).",
+             font=F_UI, size=13, italic=True, color=MUTED)
     add_footer(s, 9, total)
 
 
 def slide_fts(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "08  ·  ПОЛНОТЕКСТОВЫЙ ПОИСК", "От LIKE к GIN + русскому словарю")
+    add_slide_header(s, "08  ·  ПОИСК ПО СООБЩЕНИЯМ", "Умный поиск на русском")
 
-    # было
-    add_rect(s, Inches(0.9), Inches(2.35), Inches(5.9), Inches(2.1), FAINT)
-    add_text(s, Inches(1.1), Inches(2.5), Inches(5.6), Inches(0.35),
-             "БЫЛО", font=F_MONO, size=11, color=MUTED)
-    add_text(s, Inches(1.1), Inches(2.85), Inches(5.6), Inches(0.5),
-             "WHERE LOWER(text) LIKE '%q%'",
-             font=F_MONO, size=13, color=INK)
-    add_multiline(s, Inches(1.1), Inches(3.4), Inches(5.6), Inches(1.1), [
-        "полный скан таблицы",
-        "не находит другие словоформы",
-    ], size=12, color=MUTED, line_spacing=1.3)
+    add_multiline(s, Inches(0.9), Inches(2.4), Inches(12), Inches(1.5), [
+        "Поиск устроен так, что находит сообщения даже в разных формах слова.",
+        "Например, по запросу «обсуждать» найдутся сообщения со словами",
+        "«обсуждаю», «обсуждали», «обсуждать» — то есть по любой словоформе.",
+    ], size=15, color=INK, line_spacing=1.4, bullet_dash=False)
 
-    # стало
-    add_rect(s, Inches(7.0), Inches(2.35), Inches(5.9), Inches(2.1), BLUE_BG)
-    add_rect(s, Inches(7.0), Inches(2.35), Emu(35000), Inches(2.1), BLUE)
-    add_text(s, Inches(7.2), Inches(2.5), Inches(5.6), Inches(0.35),
-             "СТАЛО", font=F_MONO, size=11, color=BLUE)
-    add_text(s, Inches(7.2), Inches(2.85), Inches(5.6), Inches(0.5),
-             "to_tsvector('russian') @@ plainto_tsquery",
-             font=F_MONO, size=12, color=INK)
-    add_multiline(s, Inches(7.2), Inches(3.4), Inches(5.6), Inches(1.1), [
-        "GIN-индекс, никакого скана",
-        "стемминг: «обсуждать», «обсуждаю», «обсуждали»",
-        "ранжирование через ts_rank_cd",
-    ], size=12, color=INK, line_spacing=1.3)
-
-    # пример SQL
-    add_text(s, Inches(0.9), Inches(4.85), Inches(12), Inches(0.35),
-             "ЗАПРОС", font=F_MONO, size=11, color=MUTED)
-    add_rect(s, Inches(0.9), Inches(5.15), Inches(12.3), Inches(1.5), FAINT)
-    add_multiline(s, Inches(1.05), Inches(5.25), Inches(12), Inches(1.4), [
-        "SELECT *,",
-        "       ts_rank_cd(to_tsvector('russian', text), plainto_tsquery('russian', :q)) AS rank",
-        "  FROM messages",
-        " WHERE chat_id = :chat_id",
-        "   AND to_tsvector('russian', text) @@ plainto_tsquery('russian', :q)",
-        " ORDER BY rank DESC, id DESC;",
-    ], size=11, color=INK, line_spacing=1.15, bullet_dash=False, font=F_MONO)
+    # три карточки-примера
+    examples = [
+        ("Запрос",        "обсуждать"),
+        ("Тоже найдёт",   "обсуждаю, обсуждали, обсуждаем"),
+        ("Как это работает", "русский словарь PostgreSQL"),
+    ]
+    x = Inches(0.9)
+    y = Inches(4.4)
+    card_w = Inches(3.9)
+    card_h = Inches(1.7)
+    gap = Inches(0.25)
+    for i, (title, val) in enumerate(examples):
+        left = x + i * (card_w + gap)
+        add_rect(s, left, y, card_w, card_h, BLUE_BG if i == 1 else FAINT)
+        if i == 1:
+            add_rect(s, left, y, Emu(35000), card_h, BLUE)
+        add_text(s, left + Inches(0.3), y + Inches(0.2),
+                 card_w - Inches(0.4), Inches(0.35),
+                 title, font=F_MONO, size=11, color=MUTED)
+        add_text(s, left + Inches(0.3), y + Inches(0.65),
+                 card_w - Inches(0.4), Inches(0.9),
+                 val, font=F_UI, size=15, bold=(i == 1), color=INK)
     add_footer(s, 10, total)
 
 
 def slide_auth(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "09  ·  АВТОРИЗАЦИЯ", "JWT + refresh + ротация")
+    add_slide_header(s, "09  ·  ВХОД И БЕЗОПАСНОСТЬ", "Как защищены аккаунты")
 
-    # схема
-    stages = [
-        ("POST /auth/login",   "пара access + refresh"),
-        ("Bearer <access>",    "все защищённые запросы, TTL 30 мин"),
-        ("POST /auth/refresh", "старый refresh отзывается, выдаётся новая пара"),
-        ("POST /auth/logout",  "refresh помечается revoked"),
+    add_multiline(s, Inches(0.9), Inches(2.4), Inches(12), Inches(1.5), [
+        "Пользователь вводит логин и пароль — сервер выдаёт токен, с которым",
+        "клиент ходит по остальным запросам. Пароли никогда не хранятся в открытом",
+        "виде — только необратимо зашифрованными.",
+    ], size=15, color=INK, line_spacing=1.4, bullet_dash=False)
+
+    add_text(s, Inches(0.9), Inches(4.15), Inches(12), Inches(0.35),
+             "ЧТО СДЕЛАЛИ ДЛЯ БЕЗОПАСНОСТИ", font=F_MONO, size=11, color=MUTED)
+    security = [
+        "пароли хранятся в зашифрованном виде (bcrypt)",
+        "каждый запрос требует действующий токен",
+        "токен обновляется автоматически без повторного ввода пароля",
+        "выход из аккаунта отзывает все токены на сервере",
+        "в системе есть три роли: читатель, участник, владелец чата",
     ]
-    y = Inches(2.35)
-    for i, (endpoint, note) in enumerate(stages):
-        row_y = y + Inches(0.85) * i
-        add_rect(s, Inches(0.9), row_y, Inches(0.35), Inches(0.6), BLUE)
-        add_text(s, Inches(1.4), row_y + Inches(0.05), Inches(5),
-                 Inches(0.4), endpoint,
-                 font=F_MONO, size=13, bold=True, color=INK)
-        add_text(s, Inches(1.4), row_y + Inches(0.35), Inches(11), Inches(0.4),
-                 note, font=F_UI, size=13, color=MUTED)
-
-    # блок безопасности справа
-    add_rect(s, Inches(7.6), Inches(2.35), Inches(5.6), Inches(3.4), FAINT)
-    add_text(s, Inches(7.8), Inches(2.5), Inches(5.2), Inches(0.35),
-             "БЕЗОПАСНОСТЬ", font=F_MONO, size=11, color=MUTED)
-    add_multiline(s, Inches(7.8), Inches(2.85), Inches(5.2), Inches(2.9), [
-        "пароли — только bcrypt-хэш",
-        "refresh хранится SHA-256 хэшем",
-        "ротация: одноразовый refresh",
-        "row-lock (SELECT FOR UPDATE) от гонки",
-        "revoked_at помечает отозванные",
-        "TTL access = 30 мин · refresh = 30 дней",
-    ], size=13, color=INK, line_spacing=1.5)
+    add_multiline(s, Inches(0.9), Inches(4.55), Inches(12), Inches(2.5),
+                  security, size=14, color=INK, line_spacing=1.4)
     add_footer(s, 11, total)
 
 
@@ -625,6 +583,39 @@ def slide_testing(prs, total):
     add_footer(s, 13, total)
 
 
+def slide_process(prs, total):
+    s = add_blank_slide(prs)
+    add_slide_header(s, "12  ·  КАК МЫ РАБОТАЛИ", "Этапы проекта")
+
+    stages = [
+        ("Разобрали ТЗ",           "выделили обязательные и дополнительные функции"),
+        ("Спроектировали схему БД", "8 таблиц, связи между ними, ER-диаграмма"),
+        ("Написали сервер",         "регистрация, чаты, сообщения, WebSocket"),
+        ("Сделали клиент",          "одностраничное веб-приложение"),
+        ("Добавили доп. функции",   "статусы прочтения, вложения, поиск"),
+        ("Покрыли тестами",         "автоматические и ручные проверки"),
+        ("Оформили документацию",   "отчёт по ГОСТ, скриншоты, видеодемо"),
+    ]
+    y = Inches(2.35)
+    for i, (title, note) in enumerate(stages):
+        row_y = y + Inches(0.62) * i
+        # маленькая синяя цифра шага
+        add_rect(s, Inches(0.9), row_y + Inches(0.08),
+                 Inches(0.42), Inches(0.42), BLUE)
+        add_text(s, Inches(0.9), row_y + Inches(0.12),
+                 Inches(0.42), Inches(0.35),
+                 str(i + 1), font=F_UI, size=13, bold=True,
+                 color=BG, align=PP_ALIGN.CENTER)
+        # текст
+        add_text(s, Inches(1.55), row_y + Inches(0.05),
+                 Inches(4.5), Inches(0.45),
+                 title, font=F_UI, size=15, bold=True, color=INK)
+        add_text(s, Inches(6.2), row_y + Inches(0.08),
+                 Inches(7), Inches(0.45),
+                 note, font=F_UI, size=13, color=MUTED)
+    add_footer(s, 14, total)
+
+
 def slide_results(prs, total):
     s = add_blank_slide(prs)
     add_slide_header(s, "12  ·  РЕЗУЛЬТАТЫ", "Что готово и что дальше")
@@ -665,7 +656,7 @@ def main():
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
 
-    total = 13  # 1 титул + 12 контентных
+    total = 15  # 1 титул + 14 контентных
 
     slide_title(prs)
     slide_agenda(prs, total)
@@ -679,6 +670,7 @@ def main():
     slide_fts(prs, total)
     slide_auth(prs, total)
     slide_screenshots(prs, total)
+    slide_process(prs, total)
     slide_testing(prs, total)
     slide_results(prs, total)
 
