@@ -98,7 +98,7 @@ function titlePage() {
       indent: { left: convertMillimetersToTwip(75) },
     }),
     new Paragraph({
-      children: [tr("Кривонос Никита   ________________")],
+      children: [tr("Кривонос Никита Николаевич   ________________")],
       alignment: AlignmentType.LEFT,
       spacing: SPACING,
       indent: { left: convertMillimetersToTwip(75) },
