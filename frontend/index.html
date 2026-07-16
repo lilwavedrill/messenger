@@ -70,9 +70,14 @@
       transform: translateX(-100%);
       pointer-events: none;
       opacity: 0;
+      /* Take collapsed sidebar controls out of the keyboard tab order */
+      visibility: hidden;
     }
     .sidebar {
-      transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
+      transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease, visibility 0s linear 0s;
+    }
+    .app.sidebar-collapsed .sidebar {
+      transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease, visibility 0s linear 260ms;
     }
 
     /* === sidebar === */
@@ -1107,6 +1112,7 @@
 // === state ===
 const API = location.origin;
 let token = localStorage.getItem("token");
+let refreshToken = localStorage.getItem("refresh_token");
 let me = JSON.parse(localStorage.getItem("me") || "null");
 let chats = [];
 let activeChat = null;
@@ -1116,14 +1122,62 @@ let messageCache = {};   // id -> {statuses:[], sender_id, created_at}
 let currentMsgsBox = null;
 let connectionStatus = "offline"; // online | reconnecting | offline
 
-// === api helper ===
-function api(path, opts = {}) {
-  opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
-  if (token) opts.headers["Authorization"] = "Bearer " + token;
-  return fetch(API + path, opts).then(async r => {
-    if (!r.ok) throw new Error((await r.json().catch(() => ({ detail: r.statusText }))).detail);
-    return r.status === 204 ? null : r.json();
-  });
+// === api helper (with automatic access-token refresh on 401) ===
+let refreshInFlight = null;
+async function tryRefresh() {
+  if (!refreshToken) return false;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const r = await fetch(API + "/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!r.ok) return false;
+      const d = await r.json();
+      token = d.token;
+      refreshToken = d.refresh_token;
+      localStorage.setItem("token", token);
+      localStorage.setItem("refresh_token", refreshToken);
+      return true;
+    } catch { return false; }
+    finally { refreshInFlight = null; }
+  })();
+  return refreshInFlight;
+}
+
+async function api(path, opts = {}) {
+  const doFetch = () => {
+    const h = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    if (token) h["Authorization"] = "Bearer " + token;
+    return fetch(API + path, { ...opts, headers: h });
+  };
+  let r = await doFetch();
+  // Allow refresh on 401 for any path except the refresh endpoint itself
+  // (login/register also return 401 legitimately on bad creds — don't recurse)
+  if (r.status === 401 && refreshToken && !path.startsWith("/auth/refresh") && !path.startsWith("/auth/login") && !path.startsWith("/auth/register")) {
+    const ok = await tryRefresh();
+    if (ok) r = await doFetch();
+  }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({ detail: r.statusText }))).detail);
+  return r.status === 204 ? null : r.json();
+}
+
+// Authorized fetch that transparently retries once after refreshing the token on 401.
+// Use for endpoints that need custom headers (e.g. multipart uploads) where api() is unsuitable.
+async function authFetch(url, opts = {}) {
+  const build = () => {
+    const h = Object.assign({}, opts.headers || {});
+    if (token) h["Authorization"] = "Bearer " + token;
+    return fetch(url, { ...opts, headers: h });
+  };
+  let r = await build();
+  if (r.status === 401 && refreshToken) {
+    const ok = await tryRefresh();
+    if (ok) r = await build();
+  }
+  return r;
 }
 
 // === tiny DOM helper ===
@@ -1244,9 +1298,7 @@ async function loadAvatarBlobUrl(userId) {
   if (avatarPending[userId]) return avatarPending[userId];
   avatarPending[userId] = (async () => {
     try {
-      const r = await fetch(`${API}/auth/users/${userId}/avatar`, {
-        headers: { "Authorization": "Bearer " + token },
-      });
+      const r = await authFetch(`${API}/auth/users/${userId}/avatar`);
       if (!r.ok) return null;
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -1345,8 +1397,10 @@ function renderAuth() {
         : { username: usernameInp.value.trim(), password: passwordInp.value, display_name: displayInp.value || null };
       const r = await api(path, { method: "POST", body: JSON.stringify(body) });
       token = r.token;
+      refreshToken = r.refresh_token;
       me = { id: r.id, username: r.username };
       localStorage.setItem("token", token);
+      if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
       localStorage.setItem("me", JSON.stringify(me));
       userCache[me.id] = me.username;
       await bootApp();
@@ -1375,11 +1429,24 @@ async function bootApp() {
   root.innerHTML = "";
 
   // pull fresh profile so we know display_name + has_avatar (login response doesn't include has_avatar)
+  // If /me fails AND we can't refresh, the token is dead — fall back to auth screen.
   try {
     const fresh = await api("/auth/me");
     me = { ...me, ...fresh };
     localStorage.setItem("me", JSON.stringify(me));
-  } catch { /* если /me упал — работаем с тем что было */ }
+  } catch (err) {
+    // Distinguish "auth is dead" from "server hiccup": if we have no refresh token
+    // OR the error mentions authentication, bail out to login rather than render
+    // a half-broken UI that will fail on the next call anyway.
+    const msg = (err && err.message ? err.message : "").toLowerCase();
+    if (!me || !token || (!refreshToken && (msg.includes("unauth") || msg.includes("token") || msg.includes("credential")))) {
+      localStorage.clear();
+      token = null; refreshToken = null; me = null;
+      renderAuth();
+      return;
+    }
+    // Otherwise carry on with cached `me` — probably a transient network error
+  }
 
   const sidebar = h("aside", { class: "sidebar" });
   const content = h("section", { class: "content" });
@@ -1421,11 +1488,31 @@ function renderSidebar(sidebar, content) {
     h("span", { class: "me-name", id: "meName" }, me.display_name || ("@" + me.username)),
     h("button", {
       class: "logout", title: "Выйти",
-      onclick: (e) => {
+      onclick: async (e) => {
         e.stopPropagation();
+        // Best-effort server-side revoke of the refresh token
+        if (refreshToken) {
+          try {
+            await fetch(API + "/auth/logout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refresh_token: refreshToken }),
+            });
+          } catch {}
+        }
         localStorage.clear();
-        token = null; me = null; chats = []; activeChat = null; userCache = {}; messageCache = {}; avatarCache = {};
+        token = null; refreshToken = null; me = null; chats = []; activeChat = null;
+        userCache = {}; messageCache = {};
+        // Free the object URLs before dropping the cache to avoid leaking blobs
+        for (const uid of Object.keys(avatarCache)) {
+          try { URL.revokeObjectURL(avatarCache[uid]); } catch {}
+        }
+        avatarCache = {};
+        avatarPending = {};
+        if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
         if (ws) try { ws.close(); } catch {}
+        ws = null;
+        currentMsgsBox = null;
         document.removeEventListener("keydown", globalKeys);
         renderAuth();
       }
@@ -1598,6 +1685,15 @@ function openCreateChatDialog(sidebar, content, presetType) {
       err.textContent = "";
       try {
         const ids = membersInp.value.split(",").map(s => parseInt(s.trim())).filter(Boolean);
+        // Client-side validation so the user sees a sensible message instead of a raw 422.
+        if (typeSel.value === "direct") {
+          if (ids.length === 0) { err.textContent = "Укажите ID собеседника"; return; }
+          if (ids.length > 1) { err.textContent = "Для личного чата укажите один ID"; return; }
+          if (me && ids[0] === me.id) { err.textContent = "Нельзя открыть личный чат с собой"; return; }
+        } else if (ids.length === 0) {
+          err.textContent = "Укажите хотя бы одного участника";
+          return;
+        }
         await api("/chats", {
           method: "POST",
           body: JSON.stringify({ type: typeSel.value, title: titleInp.value || null, member_ids: ids }),
@@ -1735,7 +1831,11 @@ async function selectChat(chat, sidebar, content) {
         parts.push(h("span", { class: "chip-name" }, `${a.filename} · ${fmtSize(a.size_bytes)}`));
         parts.push(h("button", {
           class: "chip-x", title: "убрать",
-          onclick: () => { pending.splice(i, 1); redrawPending(); },
+          onclick: () => {
+            const removed = pending.splice(i, 1)[0];
+            if (removed && removed._thumb) { try { URL.revokeObjectURL(removed._thumb); } catch {} }
+            redrawPending();
+          },
         }, "×"));
         pendingBox.append(h("span", { class: "chip" }, ...parts));
       });
@@ -1752,9 +1852,8 @@ async function selectChat(chat, sidebar, content) {
       const fd = new FormData();
       fd.append("file", f);
       try {
-        const r = await fetch(`${API}/chats/${chat.id}/attachments`, {
+        const r = await authFetch(`${API}/chats/${chat.id}/attachments`, {
           method: "POST", body: fd,
-          headers: { "Authorization": "Bearer " + token },
         });
         if (!r.ok) throw new Error((await r.json().catch(() => ({ detail: r.statusText }))).detail || r.statusText);
         const att = await r.json();
@@ -1792,9 +1891,15 @@ async function selectChat(chat, sidebar, content) {
           attachment_ids,
         }),
       });
+      // Success — free thumbnail blob URLs held by the composer's pending list.
+      for (const a of savedPending) {
+        if (a && a._thumb) { try { URL.revokeObjectURL(a._thumb); } catch {} }
+      }
     } catch (e) {
-      textInput.value = savedText;
-      pending = savedPending;
+      // Don't clobber what the user has typed since the send attempt started.
+      if (!textInput.value.trim()) textInput.value = savedText;
+      // Merge back any pending they haven't cleared, preserving new additions.
+      pending = savedPending.concat(pending);
       redrawPending();
       showErr(e.message || "Не удалось отправить сообщение");
       console.error("send failed:", e);
@@ -1943,8 +2048,8 @@ function renderAttachment(att) {
       alt: att.filename, title: "нажмите для увеличения",
       onclick: () => openLightbox(img.src, att.filename),
     });
-    fetch(url, { headers: { "Authorization": "Bearer " + token }, redirect: "follow" })
-      .then(r => r.blob())
+    authFetch(url, { redirect: "follow" })
+      .then(r => { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
       .then(b => img.src = URL.createObjectURL(b))
       .catch(() => { img.replaceWith(h("span", { class: "label" }, "картинка недоступна")); });
     box.append(img);
@@ -1953,12 +2058,18 @@ function renderAttachment(att) {
       class: "file", href: "#",
       onclick: async (e) => {
         e.preventDefault();
-        const r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
-        const blob = await r.blob();
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = att.filename;
-        a.click();
+        try {
+          const r = await authFetch(url);
+          if (!r.ok) throw new Error("http " + r.status);
+          const blob = await r.blob();
+          const objUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = objUrl;
+          a.download = att.filename;
+          a.click();
+          // Free the temporary blob URL after the browser has kicked off the download
+          setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+        } catch { /* swallow — user will just see nothing happen */ }
       },
     },
       icon("file", 14),
@@ -2024,7 +2135,9 @@ function setConnStatus(s) {
   }
 }
 
+let wsReconnectTimer = null;
 function openWs(chatId, msgsBox) {
+  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
   if (ws) try { ws.close(); } catch {}
   setConnStatus("reconnecting");
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -2060,10 +2173,22 @@ function openWs(chatId, msgsBox) {
       }
     }
   };
-  ws.onclose = () => {
+  ws.onclose = async (ev) => {
+    // The server closes with 4401 when the JWT is rejected — try refresh once
+    // before reconnecting, so an expired access token doesn't wedge the socket.
+    if (ev && ev.code === 4401 && refreshToken) {
+      const ok = await tryRefresh();
+      if (!ok) { setConnStatus("offline"); return; }
+    }
     setConnStatus("reconnecting");
-    setTimeout(() => {
-      if (activeChat && activeChat.id === chatId) openWs(chatId, msgsBox);
+    // Only schedule a reconnect if the user is still on this chat and still logged in.
+    if (!token || !activeChat || activeChat.id !== chatId) {
+      setConnStatus("offline");
+      return;
+    }
+    wsReconnectTimer = setTimeout(() => {
+      wsReconnectTimer = null;
+      if (token && activeChat && activeChat.id === chatId) openWs(chatId, msgsBox);
       else setConnStatus("offline");
     }, 2000);
   };
@@ -2220,15 +2345,16 @@ function openProfileDialog() {
     try {
       const fd = new FormData();
       fd.append("file", f);
-      const r = await fetch(`${API}/auth/me/avatar`, {
+      const r = await authFetch(`${API}/auth/me/avatar`, {
         method: "POST", body: fd,
-        headers: { "Authorization": "Bearer " + token },
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({ detail: r.statusText }))).detail || r.statusText);
       me = await r.json();
       localStorage.setItem("me", JSON.stringify(me));
+      // Clear the previous cached blob URL BEFORE we install the new one
       invalidateAvatar(me.id);
-      // apply optimistic local preview
+      // apply optimistic local preview and prime the cache so refreshMeUi()
+      // doesn't kick off a redundant network fetch that would race with this URL
       const localUrl = URL.createObjectURL(f);
       avatarCache[me.id] = localUrl;
       avPreview.style.backgroundImage = `url("${localUrl}")`;
@@ -2260,9 +2386,10 @@ function openProfileDialog() {
       err.textContent = "";
       const val = nameInp.value.trim();
       try {
+        // Empty string clears the display name (server treats null/"" as reset).
         const upd = await api("/auth/me", {
           method: "PATCH",
-          body: JSON.stringify({ display_name: val }),
+          body: JSON.stringify({ display_name: val === "" ? null : val }),
         });
         me = upd;
         localStorage.setItem("me", JSON.stringify(me));
