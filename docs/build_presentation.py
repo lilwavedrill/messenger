@@ -197,11 +197,11 @@ def slide_agenda(prs, total):
 
 def slide_relevance(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "01  ·  АКТУАЛЬНОСТЬ", "Почему это интересно")
+    add_slide_header(s, "03  ·  АКТУАЛЬНОСТЬ", "Почему это интересно")
 
     # три цифры-хайлайта
     stats = [
-        ("100+ млрд", "сообщений в день по всему миру"),
+        ("Десятки млрд", "сообщений в день по всему миру"),
         ("< 200 мс", "цель по скорости доставки"),
         ("24 / 7",   "круглосуточная доступность"),
     ]
@@ -231,7 +231,7 @@ def slide_relevance(prs, total):
 
 def slide_goals(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "02  ·  ЦЕЛЬ И ЗАДАЧИ", "Что должно получиться")
+    add_slide_header(s, "04  ·  ЦЕЛЬ И ЗАДАЧИ", "Что должно получиться")
 
     # цель
     add_text(s, Inches(0.9), Inches(2.35), Inches(11.5), Inches(0.35),
@@ -259,7 +259,7 @@ def slide_goals(prs, total):
 
 def slide_requirements(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "03  ·  ТРЕБОВАНИЯ", "11 функциональных + 6 нефункциональных")
+    add_slide_header(s, "05  ·  ТРЕБОВАНИЯ", "11 функциональных + 6 нефункциональных")
 
     # две колонки: обязательное / дополнительное
     y0 = Inches(2.4)
@@ -297,7 +297,7 @@ def slide_requirements(prs, total):
 
 def slide_analogs(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "04  ·  ПОХОЖИЕ СЕРВИСЫ", "На что мы ориентировались")
+    add_slide_header(s, "06  ·  ПОХОЖИЕ СЕРВИСЫ", "На что мы ориентировались")
 
     items = [
         ("Telegram",  "личные и групповые чаты, история, поиск"),
@@ -323,7 +323,7 @@ def slide_analogs(prs, total):
 
 def slide_stack(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "05  ·  СТЕК", "Технологии и почему")
+    add_slide_header(s, "07  ·  СТЕК", "Технологии и почему")
 
     items = [
         ("Python 3.13",   "серверный язык"),
@@ -360,7 +360,7 @@ def slide_stack(prs, total):
 
 def slide_architecture(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "06  ·  АРХИТЕКТУРА", "Трёхзвенная схема + S3")
+    add_slide_header(s, "08  ·  АРХИТЕКТУРА", "Трёхзвенная схема + S3")
 
     # блоки: клиент — сервер — БД, S3 сбоку
     def block(left, top, w, h, title_top, title_bottom, fill=FAINT):
@@ -403,7 +403,7 @@ def slide_architecture(prs, total):
 
 def slide_database(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "07  ·  БАЗА ДАННЫХ", "Что и где мы храним")
+    add_slide_header(s, "09  ·  БАЗА ДАННЫХ", "Что и где мы храним")
 
     entities = [
         ("Пользователи",   "логин, пароль (в виде хэша), имя, аватар"),
@@ -435,7 +435,7 @@ def slide_database(prs, total):
 
 def slide_fts(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "08  ·  ПОИСК ПО СООБЩЕНИЯМ", "Умный поиск на русском")
+    add_slide_header(s, "10  ·  ПОИСК ПО СООБЩЕНИЯМ", "Умный поиск на русском")
 
     add_multiline(s, Inches(0.9), Inches(2.4), Inches(12), Inches(1.5), [
         "Поиск устроен так, что находит сообщения даже в разных формах слова.",
@@ -470,7 +470,7 @@ def slide_fts(prs, total):
 
 def slide_auth(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "09  ·  ВХОД И БЕЗОПАСНОСТЬ", "Как защищены аккаунты")
+    add_slide_header(s, "11  ·  ВХОД И БЕЗОПАСНОСТЬ", "Как защищены аккаунты")
 
     add_multiline(s, Inches(0.9), Inches(2.4), Inches(12), Inches(1.5), [
         "Пользователь вводит логин и пароль — сервер выдаёт токен, с которым",
@@ -494,7 +494,7 @@ def slide_auth(prs, total):
 
 def slide_screenshots(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "10  ·  ИНТЕРФЕЙС", "Скриншоты работающего клиента")
+    add_slide_header(s, "12  ·  ИНТЕРФЕЙС", "Скриншоты работающего клиента")
 
     shots = [
         ("screenshots/01-login.png",    "Форма входа"),
@@ -543,7 +543,7 @@ def slide_screenshots(prs, total):
 
 def slide_testing(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "11  ·  ТЕСТИРОВАНИЕ", "Автотесты + ручные сценарии")
+    add_slide_header(s, "14  ·  ТЕСТИРОВАНИЕ", "Автотесты + ручные сценарии")
 
     # цифры-хайлайты
     stats = [
@@ -580,12 +580,12 @@ def slide_testing(prs, total):
     ]
     add_multiline(s, Inches(0.9), Inches(4.85), Inches(12), Inches(2.1),
                   covered, size=13, color=INK, line_spacing=1.35)
-    add_footer(s, 13, total)
+    add_footer(s, 14, total)
 
 
 def slide_process(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "12  ·  КАК МЫ РАБОТАЛИ", "Этапы проекта")
+    add_slide_header(s, "13  ·  КАК МЫ РАБОТАЛИ", "Этапы проекта")
 
     stages = [
         ("Разобрали ТЗ",           "выделили обязательные и дополнительные функции"),
@@ -613,12 +613,12 @@ def slide_process(prs, total):
         add_text(s, Inches(6.2), row_y + Inches(0.08),
                  Inches(7), Inches(0.45),
                  note, font=F_UI, size=13, color=MUTED)
-    add_footer(s, 14, total)
+    add_footer(s, 13, total)
 
 
 def slide_results(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "12  ·  РЕЗУЛЬТАТЫ", "Что готово и что дальше")
+    add_slide_header(s, "15  ·  РЕЗУЛЬТАТЫ", "Что готово и что дальше")
 
     add_text(s, Inches(0.9), Inches(2.35), Inches(12), Inches(0.35),
              "ГОТОВО", font=F_MONO, size=11, color=BLUE)
@@ -647,6 +647,7 @@ def slide_results(prs, total):
     add_text(s, Inches(0.9), Inches(7.0), Inches(12.3), Inches(0.3),
              "github.com/lilwavedrill/messenger",
              font=F_MONO, size=11, color=BLUE)
+    add_footer(s, 15, total)
 
 
 # ---------- main ----------
