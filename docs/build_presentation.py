@@ -492,58 +492,42 @@ def slide_auth(prs, total):
     add_footer(s, 11, total)
 
 
-def slide_screenshots(prs, total):
+def slide_one_screenshot(prs, num, total, rel_path, title, subtitle=None):
+    """Один слайд — один скриншот, крупно по центру."""
     s = add_blank_slide(prs)
-    add_slide_header(s, "12  ·  ИНТЕРФЕЙС", "Скриншоты работающего клиента")
+    add_slide_header(s, f"{num:02d}  ·  ИНТЕРФЕЙС", title)
 
-    shots = [
-        ("screenshots/01-login.png",    "Форма входа"),
-        ("screenshots/02-main.png",     "Основной экран"),
-        ("screenshots/03-profile.png",  "Профиль"),
-        ("screenshots/04-new-chat.png", "Создание группы"),
-    ]
-    # 2×2 сетка изображений
-    x0 = Inches(0.9)
-    y0 = Inches(2.3)
-    cell_w = Inches(6.1)
-    cell_h = Inches(2.1)
-    gap_x = Inches(0.15)
-    gap_y = Inches(0.35)
-    for i, (rel, caption) in enumerate(shots):
-        col = i % 2
-        row = i // 2
-        left = x0 + col * (cell_w + gap_x)
-        top = y0 + row * (cell_h + gap_y)
-        # фоновая плашка + рамка hairline
-        add_rect(s, left, top, cell_w, cell_h, FAINT, line=HAIR, line_w=0.75)
-        # картинка по центру ячейки — python-pptx масштабирует по width, aspect сохраняется
-        path = DOCS / rel
-        if path.exists():
-            # оценим ширину, пусть будет чуть меньше ячейки, чтобы влезло
-            pic = s.shapes.add_picture(str(path),
-                                       left + Inches(0.25),
-                                       top + Inches(0.15),
-                                       width=cell_w - Inches(0.5))
-            # если высота вышла за пределы — пересчитаем через height
-            if pic.height > cell_h - Inches(0.55):
-                sp = pic._element
-                sp.getparent().remove(sp)
-                pic = s.shapes.add_picture(str(path),
-                                           left + Inches(0.25),
-                                           top + Inches(0.15),
-                                           height=cell_h - Inches(0.55))
-                # центрирование по горизонтали
-                pic.left = left + (cell_w - pic.width) // 2
-        # подпись под ячейкой
-        add_text(s, left, top + cell_h - Inches(0.35), cell_w, Inches(0.3),
-                 caption, font=F_MONO, size=10, color=MUTED,
+    # область под изображение: между hairline (y=1.85) и футером (y=7.05)
+    area_left  = Inches(0.9)
+    area_top   = Inches(2.15)
+    area_w     = Inches(11.5)
+    area_h     = Inches(4.6)
+
+    path = DOCS / rel_path
+    if path.exists():
+        # сначала пробуем растянуть по ширине области
+        pic = s.shapes.add_picture(str(path), area_left, area_top, width=area_w)
+        if pic.height > area_h:
+            # не влезает по высоте — перезаливаем с ограничением по высоте,
+            # чтобы сохранить aspect ratio и не обрезать снимок
+            sp = pic._element
+            sp.getparent().remove(sp)
+            pic = s.shapes.add_picture(str(path), area_left, area_top, height=area_h)
+        # горизонтальное центрирование
+        pic.left = area_left + (area_w - pic.width) // 2
+        # вертикальное центрирование в области
+        pic.top = area_top + (area_h - pic.height) // 2
+
+    if subtitle:
+        add_text(s, Inches(0.9), Inches(6.75), Inches(12), Inches(0.3),
+                 subtitle, font=F_UI, size=13, italic=True, color=MUTED,
                  align=PP_ALIGN.CENTER)
-    add_footer(s, 12, total)
+    add_footer(s, num, total)
 
 
 def slide_testing(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "14  ·  ТЕСТИРОВАНИЕ", "Автотесты + ручные сценарии")
+    add_slide_header(s, "17  ·  ТЕСТИРОВАНИЕ", "Автотесты + ручные сценарии")
 
     # цифры-хайлайты
     stats = [
@@ -580,12 +564,12 @@ def slide_testing(prs, total):
     ]
     add_multiline(s, Inches(0.9), Inches(4.85), Inches(12), Inches(2.1),
                   covered, size=13, color=INK, line_spacing=1.35)
-    add_footer(s, 14, total)
+    add_footer(s, 17, total)
 
 
 def slide_process(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "13  ·  КАК МЫ РАБОТАЛИ", "Этапы проекта")
+    add_slide_header(s, "16  ·  КАК МЫ РАБОТАЛИ", "Этапы проекта")
 
     stages = [
         ("Разобрали ТЗ",           "выделили обязательные и дополнительные функции"),
@@ -613,12 +597,12 @@ def slide_process(prs, total):
         add_text(s, Inches(6.2), row_y + Inches(0.08),
                  Inches(7), Inches(0.45),
                  note, font=F_UI, size=13, color=MUTED)
-    add_footer(s, 13, total)
+    add_footer(s, 16, total)
 
 
 def slide_results(prs, total):
     s = add_blank_slide(prs)
-    add_slide_header(s, "15  ·  РЕЗУЛЬТАТЫ", "Что готово и что дальше")
+    add_slide_header(s, "18  ·  РЕЗУЛЬТАТЫ", "Что готово и что дальше")
 
     add_text(s, Inches(0.9), Inches(2.35), Inches(12), Inches(0.35),
              "ГОТОВО", font=F_MONO, size=11, color=BLUE)
@@ -647,7 +631,7 @@ def slide_results(prs, total):
     add_text(s, Inches(0.9), Inches(7.0), Inches(12.3), Inches(0.3),
              "github.com/lilwavedrill/messenger",
              font=F_MONO, size=11, color=BLUE)
-    add_footer(s, 15, total)
+    add_footer(s, 18, total)
 
 
 # ---------- main ----------
@@ -657,7 +641,7 @@ def main():
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
 
-    total = 15  # 1 титул + 14 контентных
+    total = 18  # 1 титул + 17 контентных (интерфейс разбит на 4 слайда)
 
     slide_title(prs)
     slide_agenda(prs, total)
@@ -670,7 +654,18 @@ def main():
     slide_database(prs, total)
     slide_fts(prs, total)
     slide_auth(prs, total)
-    slide_screenshots(prs, total)
+    slide_one_screenshot(prs, 12, total, "screenshots/01-login.png",
+                         "Форма входа",
+                         "Регистрация и вход по логину и паролю")
+    slide_one_screenshot(prs, 13, total, "screenshots/02-main.png",
+                         "Основной экран",
+                         "Список чатов слева, диалог справа, композер снизу")
+    slide_one_screenshot(prs, 14, total, "screenshots/03-profile.png",
+                         "Профиль",
+                         "Смена отображаемого имени и загрузка аватара")
+    slide_one_screenshot(prs, 15, total, "screenshots/04-new-chat.png",
+                         "Создание группы",
+                         "Групповые и личные чаты с добавлением участников")
     slide_process(prs, total)
     slide_testing(prs, total)
     slide_results(prs, total)
