@@ -72,9 +72,14 @@ def consume_refresh_token(db: Session, raw: str) -> int:
 
     Отзыв ('rotation') делает старый refresh одноразовым: попытка использовать
     его повторно после /auth/refresh даст 401.
+
+    Используем SELECT ... FOR UPDATE, чтобы два параллельных /auth/refresh
+    с одним и тем же токеном не выпустили две валидные пары (race → двойная выдача).
     """
     row = db.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == _hash_refresh(raw))
+        select(RefreshToken)
+        .where(RefreshToken.token_hash == _hash_refresh(raw))
+        .with_for_update()
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(401, "invalid refresh token")
@@ -89,9 +94,12 @@ def consume_refresh_token(db: Session, raw: str) -> int:
 
 def revoke_refresh_token(db: Session, raw: str) -> int | None:
     """Отзывает refresh; возвращает user_id владельца, если что-то изменилось,
-    иначе None (токен не найден или уже отозван)."""
+    иначе None (токен не найден или уже отозван).
+    Блокируем строку, чтобы одновременный /logout и /refresh не пересекались."""
     row = db.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == _hash_refresh(raw))
+        select(RefreshToken)
+        .where(RefreshToken.token_hash == _hash_refresh(raw))
+        .with_for_update()
     ).scalar_one_or_none()
     if row is None or row.revoked_at is not None:
         return None

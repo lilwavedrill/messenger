@@ -1,4 +1,5 @@
 """Загрузка и скачивание вложений через S3-совместимое хранилище."""
+import re
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import RedirectResponse
@@ -13,6 +14,27 @@ router = APIRouter(tags=["attachments"])
 
 MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
+# Разрешаем в имени только буквы/цифры/точку/подчёркивание/дефис.
+# Всё остальное (слэши, обратные слэши, NUL, управляющие символы, юникод-хитрости)
+# режем — иначе можно испортить S3-ключ или подсунуть неожиданный Content-Disposition.
+_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _sanitize_filename(name: str | None) -> str:
+    if not name:
+        return "file"
+    # NUL-байты и путь: берём только базовое имя
+    base = name.replace("\x00", "").replace("\\", "/").split("/")[-1]
+    base = _SAFE_NAME_RE.sub("_", base).strip("._") or "file"
+    # ограничиваем длину, чтобы уложиться в лимит s3_key (VARCHAR(512))
+    if len(base) > 128:
+        stem, dot, ext = base.rpartition(".")
+        if dot and 1 <= len(ext) <= 8:
+            base = stem[: 128 - len(ext) - 1] + "." + ext
+        else:
+            base = base[:128]
+    return base
+
 
 @router.post("/chats/{chat_id}/attachments")
 async def upload_attachment(
@@ -25,26 +47,37 @@ async def upload_attachment(
     if not db.get(ChatMember, (chat_id, user_id)):
         raise HTTPException(404, "chat not found")
 
-    data = await file.read()
-    if len(data) > MAX_BYTES:
-        raise HTTPException(413, f"file too large (max {MAX_UPLOAD_MB} MB)")
+    # Читаем чанками с проверкой лимита — иначе клиент может выесть память,
+    # прислав файл сильно больше MAX_BYTES.
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_BYTES:
+            raise HTTPException(413, f"file too large (max {MAX_UPLOAD_MB} MB)")
+        chunks.append(chunk)
+    data = b"".join(chunks)
     if not data:
         raise HTTPException(422, "empty file")
 
-    key = f"chat/{chat_id}/{uuid.uuid4().hex}/{file.filename}"
+    safe_name = _sanitize_filename(file.filename)
+    key = f"chat/{chat_id}/{uuid.uuid4().hex}/{safe_name}"
     s3.put_object(key, data, file.content_type or "application/octet-stream")
 
     att = Attachment(
         uploader_id=user_id,
         s3_key=key,
-        filename=file.filename or "unnamed",
+        filename=safe_name,
         mime_type=file.content_type or "application/octet-stream",
         size_bytes=len(data),
     )
     db.add(att)
     db.add(AuditLog(
         user_id=user_id, action="upload_attachment",
-        payload={"chat_id": chat_id, "filename": file.filename, "size": len(data)},
+        payload={"chat_id": chat_id, "filename": safe_name, "size": len(data)},
     ))
     db.commit()
     db.refresh(att)

@@ -21,6 +21,25 @@ from app import s3
 router = APIRouter(prefix="/auth", tags=["auth"])
 MAX_AVATAR_BYTES = min(MAX_UPLOAD_MB, 5) * 1024 * 1024  # avatar cap: 5 MB
 
+# Разрешаем только безопасные растровые форматы. Явно исключаем image/svg+xml —
+# SVG может содержать <script> и, будучи отданным браузеру напрямую через
+# presigned URL (Content-Type: image/svg+xml), выполнит XSS в контексте
+# S3-домена (а при некоторых конфигурациях — и того же origin).
+_ALLOWED_AVATAR_MIME = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+# Магические байты: не доверяем клиентскому Content-Type, а проверяем сигнатуру.
+def _sniff_image_mime(data: bytes) -> str | None:
+    if len(data) < 12:
+        return None
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
 
 def _token_bundle(db: Session, user: User) -> TokenOut:
     """Общий ответ для /register, /login: access + refresh + expires_in."""
@@ -130,23 +149,44 @@ async def upload_avatar(
     user_id: int = Depends(current_user_id),
 ):
     ct = (file.content_type or "").lower()
-    if not ct.startswith("image/"):
-        raise HTTPException(415, "avatar must be an image")
+    # Быстрый отсев по заявленному mime: только безопасные растровые форматы.
+    if ct not in _ALLOWED_AVATAR_MIME:
+        raise HTTPException(415, "avatar must be png, jpeg, webp or gif")
 
-    data = await file.read()
+    # Читаем чанками, чтобы клиент не смог положить сервер 500-мегабайтным
+    # телом (await file.read() без лимита буферизует всё в память).
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_AVATAR_BYTES:
+            raise HTTPException(413, f"avatar too large (max {MAX_AVATAR_BYTES // (1024*1024)} MB)")
+        chunks.append(chunk)
+    data = b"".join(chunks)
     if not data:
         raise HTTPException(422, "empty file")
-    if len(data) > MAX_AVATAR_BYTES:
-        raise HTTPException(413, f"avatar too large (max {MAX_AVATAR_BYTES // (1024*1024)} MB)")
+
+    # Не доверяем клиентскому Content-Type — сверяемся с реальными байтами.
+    sniffed = _sniff_image_mime(data)
+    if sniffed is None or sniffed != ct:
+        raise HTTPException(415, "file content does not match declared image type")
 
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(404, "user not found")
 
-    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-    ext = ext if ext.isalnum() and len(ext) <= 5 else "img"
+    # Расширение выводим из подтверждённого mime, а не из filename — так
+    # исключаем инъекции через file.filename (слэши, точки, спецсимволы).
+    ext_by_mime = {
+        "image/png": "png", "image/jpeg": "jpg",
+        "image/webp": "webp", "image/gif": "gif",
+    }
+    ext = ext_by_mime[sniffed]
     new_key = f"avatars/{user_id}/{uuid.uuid4().hex}.{ext}"
-    s3.put_object(new_key, data, ct)
+    s3.put_object(new_key, data, sniffed)
 
     old_key = u.avatar_key
     u.avatar_key = new_key
