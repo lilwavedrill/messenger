@@ -641,6 +641,22 @@ def main():
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
 
+    # Явно перезаписываем метаданные документа — по умолчанию библиотека
+    # оставляет свои значения в «Автор» / «Кем изменён» / «Заметки».
+    import datetime as _dt
+    cp = prs.core_properties
+    cp.title = "Мессенджер"
+    cp.subject = "Отчёт по практике, кейс № 1 «Мессенджер»"
+    cp.author = "Мамонтов И. А., Кривонос Н."
+    cp.last_modified_by = "Мамонтов И. А."
+    cp.comments = ""
+    cp.keywords = "мессенджер, WebSocket, PostgreSQL, FastAPI"
+    cp.category = "Учебная практика"
+    now = _dt.datetime.now()
+    cp.created = now
+    cp.modified = now
+    cp.revision = 1
+
     total = 18  # 1 титул + 17 контентных (интерфейс разбит на 4 слайда)
 
     slide_title(prs)
