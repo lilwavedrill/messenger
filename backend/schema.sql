@@ -1,5 +1,6 @@
 -- Схема БД мессенджера
 
+DROP TABLE IF EXISTS refresh_tokens  CASCADE;
 DROP TABLE IF EXISTS audit_log       CASCADE;
 DROP TABLE IF EXISTS attachments     CASCADE;
 DROP TABLE IF EXISTS message_status  CASCADE;
@@ -13,6 +14,7 @@ CREATE TABLE users (
     username      VARCHAR(64) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     display_name  VARCHAR(128),
+    avatar_key    VARCHAR(512),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -71,8 +73,18 @@ CREATE TABLE audit_log (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE refresh_tokens (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_attachments_message ON attachments(message_id);
 CREATE INDEX idx_message_status_msg ON message_status(message_id);
 CREATE INDEX idx_messages_chat_created ON messages(chat_id, id DESC);
 CREATE INDEX idx_messages_text_search  ON messages USING gin(to_tsvector('russian', text));
 CREATE INDEX idx_chat_members_user     ON chat_members(user_id);
+CREATE INDEX idx_refresh_tokens_user   ON refresh_tokens(user_id);

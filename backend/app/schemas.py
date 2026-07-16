@@ -18,12 +18,36 @@ class TokenOut(BaseModel):
     id: int
     username: str
     token: str
+    refresh_token: str
+    expires_in: int  # seconds until access token expires
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+
+class RefreshOut(BaseModel):
+    token: str
+    refresh_token: str
+    expires_in: int
 
 
 class UserOut(BaseModel):
     id: int
     username: str
     display_name: str | None = None
+    has_avatar: bool = False
+
+
+class MeOut(BaseModel):
+    id: int
+    username: str
+    display_name: str | None = None
+    has_avatar: bool = False
+
+
+class UpdateMeIn(BaseModel):
+    display_name: str | None = Field(default=None, max_length=128)
 
 
 class ChatCreateIn(BaseModel):

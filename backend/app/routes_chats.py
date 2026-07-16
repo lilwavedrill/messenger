@@ -59,7 +59,10 @@ def list_members(chat_id: int, db: Session = Depends(get_db), user_id: int = Dep
     if not db.get(ChatMember, (chat_id, user_id)):
         raise HTTPException(404, "chat not found")
     q = select(User).join(ChatMember, ChatMember.user_id == User.id).where(ChatMember.chat_id == chat_id)
-    return list(db.execute(q).scalars())
+    return [
+        UserOut(id=u.id, username=u.username, display_name=u.display_name, has_avatar=bool(u.avatar_key))
+        for u in db.execute(q).scalars()
+    ]
 
 
 @router.post("/{chat_id}/members", status_code=201)

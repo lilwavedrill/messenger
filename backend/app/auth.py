@@ -1,8 +1,13 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Header
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-from app.config import JWT_SECRET, JWT_ALG, JWT_TTL_MINUTES
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from app.config import JWT_SECRET, JWT_ALG, JWT_TTL_MINUTES, REFRESH_TTL_DAYS
+from app.models import RefreshToken
 
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -23,6 +28,11 @@ def issue_token(user_id: int) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
+def access_token_expires_in() -> int:
+    """Seconds until a freshly issued access token expires."""
+    return JWT_TTL_MINUTES * 60
+
+
 def parse_token(token: str) -> int:
     data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
     return int(data["sub"])
@@ -36,3 +46,55 @@ def current_user_id(authorization: str | None = Header(default=None)) -> int:
         return parse_token(token)
     except JWTError:
         raise HTTPException(401, "invalid or expired token")
+
+
+# --- Refresh tokens ---------------------------------------------------------
+
+def _hash_refresh(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def issue_refresh_token(db: Session, user_id: int) -> str:
+    """Создаёт refresh-токен, кладёт его хэш в БД, возвращает сырое значение."""
+    raw = secrets.token_hex(32)
+    row = RefreshToken(
+        user_id=user_id,
+        token_hash=_hash_refresh(raw),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TTL_DAYS),
+    )
+    db.add(row)
+    db.flush()
+    return raw
+
+
+def consume_refresh_token(db: Session, raw: str) -> int:
+    """Валидирует и отзывает refresh, возвращает user_id.
+
+    Отзыв ('rotation') делает старый refresh одноразовым: попытка использовать
+    его повторно после /auth/refresh даст 401.
+    """
+    row = db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == _hash_refresh(raw))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(401, "invalid refresh token")
+    if row.revoked_at is not None:
+        raise HTTPException(401, "refresh token revoked")
+    if row.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(401, "refresh token expired")
+    row.revoked_at = datetime.now(timezone.utc)
+    db.flush()
+    return row.user_id
+
+
+def revoke_refresh_token(db: Session, raw: str) -> int | None:
+    """Отзывает refresh; возвращает user_id владельца, если что-то изменилось,
+    иначе None (токен не найден или уже отозван)."""
+    row = db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == _hash_refresh(raw))
+    ).scalar_one_or_none()
+    if row is None or row.revoked_at is not None:
+        return None
+    row.revoked_at = datetime.now(timezone.utc)
+    db.flush()
+    return row.user_id

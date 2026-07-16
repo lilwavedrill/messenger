@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, literal_column, Text, cast
 from app.db import get_db
 from app.models import Message, MessageStatus, ChatMember, AuditLog, Attachment
 from app.auth import current_user_id
@@ -136,13 +136,37 @@ def search(
     user_id: int = Depends(current_user_id),
 ):
     _require_member(db, chat_id, user_id)
-    rows = list(db.execute(
-        select(Message)
-        .where(Message.chat_id == chat_id)
-        .where(func.lower(Message.text).contains(q.lower()))
-        .order_by(desc(Message.id))
-        .limit(limit)
-    ).scalars())
+
+    # Полнотекстовый поиск через GIN-индекс (idx_messages_text_search).
+    # plainto_tsquery корректно превращает "поиск" / "поисков" в один и тот же lexeme.
+    # Первый аргумент — regconfig, поэтому передаём его как literal_column
+    # (иначе SQLAlchemy отправит его как VARCHAR и Postgres не найдёт функцию).
+    russian = literal_column("'russian'")
+    tsquery = func.plainto_tsquery(russian, q)
+    tsvector = func.to_tsvector(russian, Message.text)
+
+    # Если tsquery пустая (например q состоит только из стоп-слов) — fallback на ILIKE,
+    # иначе пользователь получит пустой список и подумает, что ничего не найдено.
+    is_empty = db.execute(select(cast(tsquery, Text))).scalar() == ""
+
+    if is_empty:
+        rows = list(db.execute(
+            select(Message)
+            .where(Message.chat_id == chat_id)
+            .where(Message.text.ilike(f"%{q}%"))
+            .order_by(desc(Message.id))
+            .limit(limit)
+        ).scalars())
+    else:
+        rank = func.ts_rank_cd(tsvector, tsquery)
+        rows = list(db.execute(
+            select(Message)
+            .where(Message.chat_id == chat_id)
+            .where(tsvector.op("@@")(tsquery))
+            .order_by(desc(rank), desc(Message.id))
+            .limit(limit)
+        ).scalars())
+
     ids = [m.id for m in rows]
     st_map = _statuses_for(db, ids)
     at_map = _attachments_for(db, ids)
