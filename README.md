@@ -123,11 +123,13 @@ messenger/
 ├─ frontend/
 │  └─ index.html              # одностраничный клиент
 └─ docs/
-   ├─ er.png / er.svg / er.dot
-   ├─ report.docx             # отчёт по ГОСТ 7.32-2017
-   ├─ report.md               # markdown-версия отчёта
-   ├─ contributions.md        # вклад участников
-   └─ build_report.js         # генератор отчёта (docx-js)
+   ├─ er.png / er.svg / er.dot   # ER-диаграмма БД
+   ├─ report.docx                # отчёт по ГОСТ 7.32-2017
+   ├─ report.md                  # markdown-черновик отчёта
+   ├─ presentation.pptx          # презентация к защите
+   ├─ demo.mp4                   # видеодемонстрация
+   ├─ contributions.md           # вклад участников
+   └─ screenshots/               # скриншоты интерфейса
 ```
 
 ## API

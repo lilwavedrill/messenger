@@ -16,6 +16,6 @@ package-lock.json
 # Word lock files
 ~$*
 
-# Локальные генераторы документов
-docs/build_presentation.py
-docs/build_report.js
+# Локальные вспомогательные скрипты для работы с документами
+docs/*.py
+docs/*.js
